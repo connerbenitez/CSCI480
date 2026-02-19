@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Security Manager</title>
+    <link rel="stylesheet" href="style.css?v=2.0">
+</head>
+<body>
+    <div class="navbar">
+        <div class="navbar-content">
+            <div class="logo">🛡️ Network Manager</div>
+            <div class="status-light">
+                <span class="indicator online"></span> System Online
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-panel">
+        <div class="tabs-navbar">
+            <button class="tab-button active" onclick="switchTab('detection')">
+                <span>📊</span> Detection
+            </button>
+            <button class="tab-button" onclick="switchTab('live-scan')">
+                <span>🔴</span> Live Scan
+            </button>
+            <button class="tab-button" onclick="switchTab('blacklist')">
+                <span>🚫</span> Blacklist
+            </button>
+            <button class="tab-button" onclick="switchTab('logs')">
+                <span>📋</span> Logs
+            </button>
+        </div>
+
+        <div class="main-content">
+            <!-- Detection Tab -->
+            <div id="detection" class="tab-content active">
+                <div class="panel-header">
+                    <h1>🔍 Real-Time Anomaly Detection</h1>
+                    <p>Machine Learning-based network threat analysis using K-Means & Autoencoder</p>
+                </div>
+
+                <div class="control-panel">
+                    <button class="btn-action" onclick="fetchData()">🔄 Scan Next Sample</button>
+                    <button class="btn-action secondary" onclick="clearResults()">🗑️ Clear Results</button>
+                </div>
+
+                <div class="detection-grid">
+                    <div class="detection-card">
+                        <div class="card-header">📊 K-Means Clustering Analysis</div>
+                        <div class="card-body">
+                            <div class="info-row">
+                                <span class="label">Detection Status:</span>
+                                <span id="kmeans-status" class="value status-unknown">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Cluster Assignment:</span>
+                                <span id="kmeans-cluster" class="value">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Model Type:</span>
+                                <span class="value" style="color: #00ccff;">Unsupervised Learning</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detection-card">
+                        <div class="card-header">🧠 Autoencoder Analysis</div>
+                        <div class="card-body">
+                            <div class="info-row">
+                                <span class="label">Detection Status:</span>
+                                <span id="ae-status" class="value status-unknown">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Reconstruction Error:</span>
+                                <span id="ae-error" class="value">---</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Model Type:</span>
+                                <span class="value" style="color: #ff0080;">Anomaly Detection</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-header">📦 Network Packet Information</div>
+                <div class="packet-details">
+                    <div class="info-table">
+                        <div class="table-row">
+                            <div class="table-cell">
+                                <span class="table-cell label">🔌 Destination Port</span>
+                                <span class="table-cell value"><span id="port">---</span></span>
+                            </div>
+                            <div class="table-cell">
+                                <span class="table-cell label">📈 Flow IAT Mean</span>
+                                <span class="table-cell value"><span id="iat">---</span></span>
+                            </div>
+                            <div class="table-cell">
+                                <span class="table-cell label">📊 Fwd Packet Length</span>
+                                <span class="table-cell value"><span id="length">---</span></span>
+                            </div>
+                            <div class="table-cell">
+                                <span class="table-cell label">🚩 SYN Flag Count</span>
+                                <span class="table-cell value"><span id="syn">---</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Scan Tab -->
+            <div id="live-scan" class="tab-content">
+                <div class="panel-header">
+                    <h1>🔴 Continuous Live Scan</h1>
+                    <p>Real-time monitoring of network packets</p>
+                </div>
+
+                <div class="control-panel">
+                    <button class="btn-action" id="live-scan-btn" onclick="toggleLiveScan()">▶️ Start Live Scan</button>
+                    <div style="flex: 1; text-align: right;">
+                        <span style="color: var(--text-muted);">Scan Interval: </span>
+                        <select id="scan-interval" style="padding: 0.5rem; background: rgba(35,45,61,0.8); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+                            <option value="1000">1 sec</option>
+                            <option value="2000" selected>2 sec</option>
+                            <option value="3000">3 sec</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="live-feed-container">
+                    <div class="section-header">📊 Live Detection Feed</div>
+                    <div id="live-feed" class="live-feed">
+                        <div class="feed-placeholder">
+                            <p>👈 Click "Start Live Scan" to begin monitoring</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="live-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Total Scans</div>
+                        <div class="stat-value" id="stat-total">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Anomalies Detected</div>
+                        <div class="stat-value anomaly" id="stat-anomalies">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Normal Traffic</div>
+                        <div class="stat-value" id="stat-normal">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Detection Rate</div>
+                        <div class="stat-value" id="stat-rate">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Blacklist Tab -->
+            <div id="blacklist" class="tab-content">
+                <div class="panel-header">
+                    <h1>🚫 Blacklist Management</h1>
+                    <p>Block malicious IPs and domains from your network</p>
+                </div>
+
+                <div class="control-panel">
+                    <input type="text" id="blacklist-input" placeholder="Enter IP address or domain..." class="input-field">
+                    <button class="btn-action" onclick="addToBlacklist()">➕ Add to Blacklist</button>
+                </div>
+
+                <div class="blacklist-container">
+                    <div class="section-header">🚫 Blocked Network Resources</div>
+                    <div class="blacklist-table">
+                        <div class="table-header">
+                            <div class="col-type">Type</div>
+                            <div class="col-address">Address</div>
+                            <div class="col-reason">Reason</div>
+                            <div class="col-action">Action</div>
+                        </div>
+                        <div id="ip-blacklist" class="table-body">
+                            <div class="table-row">
+                                <div class="col-type">IP</div>
+                                <div class="col-address">192.168.1.100</div>
+                                <div class="col-reason">🔴 DDoS Attack Detected</div>
+                                <div class="col-action"><button class="btn-small danger" onclick="removeBlacklist('192.168.1.100')">Remove</button></div>
+                            </div>
+                            <div class="table-row">
+                                <div class="col-type">IP</div>
+                                <div class="col-address">10.0.0.50</div>
+                                <div class="col-reason">🔍 Port Scan</div>
+                                <div class="col-action"><button class="btn-small danger" onclick="removeBlacklist('10.0.0.50')">Remove</button></div>
+                            </div>
+                            <div class="table-row">
+                                <div class="col-type">Domain</div>
+                                <div class="col-address">malicious.com</div>
+                                <div class="col-reason">🦠 Malware Host</div>
+                                <div class="col-action"><button class="btn-small danger" onclick="removeBlacklist('malicious.com')">Remove</button></div>
+                            </div>
+                            <div class="table-row">
+                                <div class="col-type">Domain</div>
+                                <div class="col-address">phishing-site.net</div>
+                                <div class="col-reason">⚠️ Phishing Detected</div>
+                                <div class="col-action"><button class="btn-small danger" onclick="removeBlacklist('phishing-site.net')">Remove</button></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="logs" class="tab-content">
+                <div class="panel-header">
+                    <h1>📋 System Logs</h1>
+                    <p>Real-time threat detection events and system activities</p>
+                </div>
+
+                <div class="control-panel">
+                    <button class="btn-action secondary" onclick="exportLogs()">💾 Export Logs</button>
+                    <button class="btn-action secondary" onclick="clearLogs()">🗑️ Clear All Logs</button>
+                </div>
+
+                <div class="logs-container">
+                    <div id="logs-list" class="logs-table">
+                        <div class="log-entry error">
+                            <span class="log-time">[2026-02-12 14:35:22]</span>
+                            <span class="log-msg">🚨 ANOMALY DETECTED: Port 443, Cluster 1, Error: 0.847</span>
+                        </div>
+                        <div class="log-entry warning">
+                            <span class="log-time">[2026-02-12 14:34:18]</span>
+                            <span class="log-msg">⚠️ Suspicious activity: Device scan initiated on 192.168.1.100</span>
+                        </div>
+                        <div class="log-entry info">
+                            <span class="log-time">[2026-02-12 14:33:45]</span>
+                            <span class="log-msg">✅ System online - All ML models loaded successfully</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let blacklist = ['192.168.1.100', '10.0.0.50', 'malicious.com', 'phishing-site.net'];
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.closest('.tab-button').classList.add('active');
+        }
+
+        function fetchData() {
+            const scanBtn = event.target;
+            scanBtn.disabled = true;
+            scanBtn.textContent = '⏳ Scanning...';
+
+            fetch('/update_data')
+                .then(response => response.json())
+                .then(data => {
+                    // Update packet info
+                    document.getElementById('port').textContent = data.port;
+                    document.getElementById('length').textContent = data.length;
+                    document.getElementById('iat').textContent = data.iat.toFixed(4);
+                    document.getElementById('syn').textContent = data.syn;
+
+                    // Update K-Means results
+                    const kmeansEl = document.getElementById('kmeans-status');
+                    kmeansEl.textContent = data.kmeans_status;
+                    kmeansEl.className = 'value status-' + (data.kmeans_status === 'ANOMALY' ? 'danger' : 'safe');
+                    document.getElementById('kmeans-cluster').textContent = `Cluster ${data.kmeans_cluster}`;
+
+                    // Update Autoencoder results
+                    const aeEl = document.getElementById('ae-status');
+                    aeEl.textContent = data.autoencoder_status;
+                    aeEl.className = 'value status-' + (data.autoencoder_status === 'ANOMALY' ? 'danger' : 'safe');
+                    document.getElementById('ae-error').textContent = data.reconstruction_error.toFixed(6);
+
+                    // Log the event
+                    addLog(data.kmeans_status === 'ANOMALY' || data.autoencoder_status === 'ANOMALY' ? 'error' : 'info',
+                        `Scan: Port ${data.port}, K-Means: ${data.kmeans_status}, AE: ${data.autoencoder_status}`);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addLog('error', `Scan failed: ${error}`);
+                    alert('Failed to fetch data: ' + error);
+                })
+                .finally(() => {
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = '🔄 Scan Next Sample';
+                });
+        }
+
+        function clearResults() {
+            document.getElementById('port').textContent = '---';
+            document.getElementById('length').textContent = '---';
+            document.getElementById('iat').textContent = '---';
+            document.getElementById('syn').textContent = '---';
+            document.getElementById('kmeans-status').textContent = '---';
+            document.getElementById('kmeans-status').className = 'value status-unknown';
+            document.getElementById('kmeans-cluster').textContent = '---';
+            document.getElementById('ae-status').textContent = '---';
+            document.getElementById('ae-status').className = 'value status-unknown';
+            document.getElementById('ae-error').textContent = '---';
+        }
+
+        function addToBlacklist() {
+            const input = document.getElementById('blacklist-input');
+            const address = input.value.trim();
+            
+            if (!address) {
+                alert('Please enter an IP address or domain');
+                return;
+            }
+
+            if (blacklist.includes(address)) {
+                alert('This entry already exists in the blacklist');
+                return;
+            }
+
+            blacklist.push(address);
+            input.value = '';
+            renderBlacklist();
+            addLog('warning', `Added ${address} to blacklist`);
+        }
+
+        function removeBlacklist(address) {
+            blacklist = blacklist.filter(item => item !== address);
+            renderBlacklist();
+            addLog('info', `Removed ${address} from blacklist`);
+        }
+
+        function renderBlacklist() {
+            const container = document.getElementById('ip-blacklist');
+            container.innerHTML = blacklist.map(address => `
+                <div class="table-row">
+                    <div class="col-type">${address.includes('.com') || address.includes('.net') ? 'Domain' : 'IP'}</div>
+                    <div class="col-address">${address}</div>
+                    <div class="col-reason">Manual Entry</div>
+                    <div class="col-action"><button class="btn-small danger" onclick="removeBlacklist('${address}')">Remove</button></div>
+                </div>
+            `).join('');
+        }
+
+        function addLog(type, message) {
+            const logsList = document.getElementById('logs-list');
+            const now = new Date();
+            const time = now.toISOString().replace('T', ' ').substring(0, 19);
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `<span class="log-time">[${time}]</span><span class="log-msg">${message}</span>`;
+            logsList.insertBefore(logEntry, logsList.firstChild);
+            
+            // Keep only last 100 logs
+            while (logsList.children.length > 100) {
+                logsList.removeChild(logsList.lastChild);
+            }
+        }
+
+        function exportLogs() {
+            const logs = document.getElementById('logs-list').innerText;
+            const blob = new Blob([logs], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'system_logs.txt';
+            a.click();
+        }
+
+        function clearLogs() {
+            if (confirm('Are you sure you want to clear all logs?')) {
+                document.getElementById('logs-list').innerHTML = '';
+                addLog('info', 'Logs cleared by user');
+            }
+        }
+
+        // Live Scan Variables
+        let liveScanActive = false;
+        let liveScanInterval = null;
+        let liveScanStats = { total: 0, anomalies: 0, normal: 0 };
+
+        function toggleLiveScan() {
+            const btn = document.getElementById('live-scan-btn');
+            const feed = document.getElementById('live-feed');
+            
+            if (!liveScanActive) {
+                // Start Live Scan
+                liveScanActive = true;
+                btn.textContent = '⏹️ Stop Live Scan';
+                btn.style.background = 'linear-gradient(135deg, var(--danger), #ff5555)';
+                feed.innerHTML = '';
+                liveScanStats = { total: 0, anomalies: 0, normal: 0 };
+                
+                const interval = parseInt(document.getElementById('scan-interval').value);
+                liveScanInterval = setInterval(performLiveScan, interval);
+                performLiveScan(); // Immediate first scan
+            } else {
+                // Stop Live Scan
+                liveScanActive = false;
+                btn.textContent = '▶️ Start Live Scan';
+                btn.style.background = 'linear-gradient(135deg, var(--accent-blue), var(--accent-cyan))';
+                clearInterval(liveScanInterval);
+            }
+        }
+
+        function performLiveScan() {
+            fetch('/update_data')
+                .then(response => response.json())
+                .then(data => {
+                    const feed = document.getElementById('live-feed');
+                    const now = new Date();
+                    const time = now.toLocaleTimeString();
+                    const isAnomaly = data.kmeans_status === 'ANOMALY' || data.autoencoder_status === 'ANOMALY';
+                    
+                    // Update stats
+                    liveScanStats.total++;
+                    if (isAnomaly) {
+                        liveScanStats.anomalies++;
+                    } else {
+                        liveScanStats.normal++;
+                    }
+
+                    // Create feed item
+                    const feedItem = document.createElement('div');
+                    feedItem.className = `feed-item ${isAnomaly ? 'anomaly' : 'normal'}`;
+                    feedItem.innerHTML = `
+                        <div class="feed-item-header">
+                            <div class="feed-item-time">${time}</div>
+                            <div class="feed-item-info">
+                                <div class="feed-item-port">Port ${data.port} • Length: ${data.length} • IAT: ${data.iat.toFixed(2)}</div>
+                                <div class="feed-item-details">K-Means: ${data.kmeans_status} (Cluster ${data.kmeans_cluster}) | AE Error: ${data.reconstruction_error.toFixed(4)}</div>
+                            </div>
+                        </div>
+                        <div class="feed-item-status ${isAnomaly ? 'anomaly' : 'normal'}">
+                            ${isAnomaly ? '🔴 ANOMALY' : '✅ NORMAL'}
+                        </div>
+                    `;
+                    
+                    // Add to top of feed
+                    if (feed.querySelector('.feed-placeholder')) {
+                        feed.innerHTML = '';
+                    }
+                    feed.insertBefore(feedItem, feed.firstChild);
+                    
+                    // Keep only last 50 items
+                    while (feed.children.length > 50) {
+                        feed.removeChild(feed.lastChild);
+                    }
+
+                    // Update stats display
+                    document.getElementById('stat-total').textContent = liveScanStats.total;
+                    document.getElementById('stat-anomalies').textContent = liveScanStats.anomalies;
+                    document.getElementById('stat-normal').textContent = liveScanStats.normal;
+                    const rate = liveScanStats.total > 0 ? ((liveScanStats.anomalies / liveScanStats.total) * 100).toFixed(1) : 0;
+                    document.getElementById('stat-rate').textContent = rate + '%';
+                })
+                .catch(error => {
+                    console.error('Live scan error:', error);
+                    if (liveScanActive) {
+                        addLog('error', `Live scan failed: ${error}`);
+                    }
+                });
+        }
+    </script>
+</body>
+</html>
