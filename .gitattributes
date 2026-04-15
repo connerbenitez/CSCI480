@@ -1,0 +1,9 @@
+ML/**/*.pkl filter=lfs diff=lfs merge=lfs -text
+ML/**/*.pt filter=lfs diff=lfs merge=lfs -text
+ML/**/*.json text eol=lf
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.ps1 text eol=crlf

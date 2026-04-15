@@ -1,0 +1,11 @@
+flask-cors==5.0.0
+flask==3.0.3
+scapy==2.5.0
+torch==2.6.0
+scikit-learn==1.6.1
+pandas==2.2.2
+numpy==1.26.4
+joblib==1.4.2
+psutil==6.0.0
+python-dateutil==2.9.0
+

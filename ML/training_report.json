@@ -1,0 +1,96 @@
+{
+  "profile": "full",
+  "dataset_rows": 2574059,
+  "feature_count": 49,
+  "dropped_correlated_features": [
+    "total_backward_packets",
+    "total_length_of_bwd_packets",
+    "fwd_packet_length_std",
+    "bwd_packet_length_mean",
+    "bwd_packet_length_std",
+    "fwd_iat_total",
+    "fwd_iat_max",
+    "fwd_packets/s",
+    "packet_length_std",
+    "syn_flag_count",
+    "cwe_flag_count",
+    "ece_flag_count",
+    "average_packet_size",
+    "avg_fwd_segment_size",
+    "avg_bwd_segment_size",
+    "subflow_fwd_packets",
+    "subflow_fwd_bytes",
+    "subflow_bwd_packets",
+    "subflow_bwd_bytes",
+    "idle_mean",
+    "idle_max",
+    "idle_min"
+  ],
+  "autoencoder": {
+    "train_error_mean": 0.7055978178977966,
+    "val_error_mean": 1.3129812479019165,
+    "threshold": 10.331644058227539,
+    "roc_auc": 0.7911183754204691
+  },
+  "isolation_forest": {
+    "roc_auc": 0.8697379848595918,
+    "risk_thresholds": {
+      "low": 0.06755854408012041,
+      "medium": 0.11197794832227187,
+      "high": 0.22941278795767095
+    },
+    "best_params": {
+      "n_estimators": 400,
+      "contamination": 0.03
+    }
+  },
+  "kmeans": {
+    "roc_auc": 0.8726422461766634,
+    "risk_thresholds": {
+      "low": 0.005434723570942879,
+      "medium": 0.009372623637318611,
+      "high": 0.01694372296333313
+    },
+    "cluster_count": 16
+  },
+  "random_forest": {
+    "accuracy": 0.9985237329355182,
+    "macro_f1": 0.8354595697964372,
+    "best_params": {
+      "n_estimators": 500,
+      "max_depth": 40,
+      "min_samples_leaf": 2,
+      "min_samples_split": 4,
+      "max_features": 0.6
+    }
+  },
+  "gradient_boosted_tree": {
+    "accuracy": 0.9985470424154838,
+    "macro_f1": 0.9063718968269963,
+    "best_params": {
+      "learning_rate": 0.03,
+      "max_depth": 12,
+      "max_iter": 600,
+      "min_samples_leaf": 10,
+      "l2_regularization": 0.2
+    }
+  },
+  "ppo_policy": {
+    "binary_accuracy": 0.8170788559707233,
+    "roc_auc": 0.8949812705837054,
+    "decision_threshold": 0.6019898653030396,
+    "high_risk_rate": 0.03986503811099974,
+    "teacher_alignment": 0.8164359028150082,
+    "risk_thresholds": {
+      "low": 0.5974432229995728,
+      "medium": 0.6748069524765015,
+      "high": 0.7949033379554749
+    }
+  },
+  "gnn_detector": {
+    "binary_accuracy": 0.8643333333333333,
+    "roc_auc": 0.9386554410426922,
+    "decision_threshold": 0.5377922058105469,
+    "k_neighbors": 8
+  }
+}

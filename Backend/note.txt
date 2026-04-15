@@ -1,1 +1,6 @@
 Insert backend here
+
+RUN THIS!!!!:
+
+cd C:\Users\pompk\Desktop\CSCI480
+.\.venv\Scripts\python.exe .\run_project.py

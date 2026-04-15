@@ -1,0 +1,149 @@
+\documentclass[12pt]{article}
+
+% If your instructor-provided LaTeX template already contains its own
+% \documentclass, packages, and \begin{document}, copy only the content
+% from \maketitle onward into that template.
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\setstretch{1.15}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue,
+    citecolor=black
+}
+
+\title{Layered Intrusion Detection and Prevention Using Multi-Model Network Traffic Analysis}
+\author{Your Name \\ CSCI 480 \\ Spring 2026}
+\date{Project Report Draft -- Initial Submission}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Network intrusion detection remains a difficult problem because modern traffic includes both well-known attack signatures and constantly changing anomalous behavior. Signature-based defenses perform well when threats are already documented, but they are less effective when the traffic pattern is new, obfuscated, or only partially resembles a known attack. This project investigates a layered intrusion detection and prevention system (IDS/IPS) that combines multiple machine learning techniques with live packet capture and active response controls. The prototype integrates an autoencoder, Isolation Forest, K-Means clustering, and a Random Forest classifier to examine network flows from multiple perspectives. The system extracts flow-level features from real traffic, computes model-specific outputs, generates a unified risk view, and optionally applies firewall-based blocking actions. In addition, the project includes real attack simulation for ICMP flooding, SYN flooding, UDP flooding, and port scanning so that detection behavior and prevention timing can be evaluated in a live environment. Initial results show that a layered design provides more informative detection behavior than a single-model approach, particularly when known-label classification and anomaly detection are considered together. The current prototype establishes a practical research platform for future evaluation of detection quality, model agreement, and automated response timing.
+\end{abstract}
+
+\section{Introduction}
+
+Computer networks carry large volumes of traffic at all times, which makes manual inspection impractical in most real environments. Intrusion detection systems are designed to address this problem by identifying suspicious or malicious activity automatically. However, many traditional systems rely heavily on signatures, rules, or previously observed attack patterns. These approaches are useful when the attack is already known, but they often become less effective when attackers change their methods, use unfamiliar protocols in unexpected ways, or generate traffic that does not match an existing rule set. This limitation is especially important in the context of zero-day attacks, stealthy reconnaissance, and gradual probing activity.
+
+Anomaly-based detection offers a different perspective by attempting to learn what normal behavior looks like and then flagging deviations from that baseline. Machine learning has become an increasingly important part of this area because it can analyze high-dimensional traffic features more effectively than simple threshold rules. Even so, no single model is consistently reliable across all network conditions. Some models are good at recognizing known attack families, while others are better at identifying unusual behavior even when it has not been labeled before. For this reason, layered detection architectures have gained attention as a way to reduce the blind spots of individual methods.
+
+This project proposes and implements a layered IDS/IPS prototype that combines four complementary models: an autoencoder for reconstruction-based anomaly detection, Isolation Forest for outlier detection, K-Means for behavioral distance measurement, and a Random Forest for supervised traffic labeling. The system captures live network packets, transforms them into flow-level features, scores them through the machine learning stack, and presents the outputs through an interactive dashboard. It also supports active defense by allowing suspicious IP addresses to be blocked through firewall controls when prevention is enabled. To make evaluation more realistic, the project includes real traffic generation for several attack types rather than relying only on offline datasets or synthetic UI entries.
+
+The objective of this initial submission is to document the architecture, motivation, and early implementation results of the project. The report focuses on how the prototype was designed, why a layered approach was chosen, and what has been observed so far during live testing. Section 2 reviews related work in intrusion detection and layered anomaly analysis. Section 3 describes the system methodology, including feature extraction, model integration, testing strategy, and prevention logic. Section 4 presents the current prototype results and observations. Section 5 concludes the draft and outlines future work for the next development phase.
+
+\section{Related Work}
+
+Research in intrusion detection generally falls into two broad categories: signature-based detection and anomaly-based detection. Signature-based systems compare observed activity against a database of known malicious patterns. These systems are widely used because they are often fast, interpretable, and precise when the attack has already been documented. Their main limitation is that they are reactive by design. If the traffic pattern is new or deliberately modified to avoid known signatures, a signature-based system may fail to detect it.
+
+Anomaly-based intrusion detection addresses this problem by modeling normal behavior and identifying deviations. This approach is useful for detecting novel threats, but it often comes with the challenge of increased false positives. Normal traffic can vary widely depending on users, applications, and timing, which makes the boundary between benign and malicious behavior difficult to define. As a result, anomaly detection research frequently focuses on balancing sensitivity and stability.
+
+Machine learning provides a useful framework for anomaly-based detection because it allows systems to learn patterns directly from data. Supervised approaches such as decision trees, support vector machines, and Random Forest classifiers are especially effective when labeled traffic datasets are available. Random Forest is attractive in practice because it performs well on structured tabular features, handles nonlinear decision boundaries, and produces interpretable class outputs. However, supervised methods depend on the breadth and quality of the training data. If an attack type is absent or poorly represented, performance may degrade significantly.
+
+Unsupervised learning offers a partial solution to that problem. Isolation Forest identifies anomalous points by measuring how easily they can be isolated in random tree structures. It is especially useful for high-dimensional data and does not require labeled attack examples. K-Means clustering, while simpler, can still be valuable when suspicious traffic lies far from normal cluster centroids. Autoencoders extend unsupervised detection by training neural networks to reconstruct expected inputs. When the reconstruction error becomes unusually large, the input can be treated as anomalous. Each method emphasizes a different aspect of abnormality, which explains why layered or hybrid IDS models have become an important direction in current research.
+
+Another important trend in the literature is the integration of detection and response. A system that only produces alerts may still leave administrators with an overwhelming operational burden, especially during fast or repeated attacks. Intrusion prevention systems address this issue by adding automated response mechanisms such as blocking, quarantining, or throttling. However, prevention introduces its own challenge: the cost of false positives can be much higher if a legitimate service is blocked automatically. Consequently, modern designs often separate the process of detecting suspicious behavior from the policy that determines when a preventive action should be taken.
+
+This project builds on those ideas by combining supervised and unsupervised learning, aggregating their outputs into a layered risk estimate, and pairing that estimate with a controlled prevention mechanism. The goal is not only to classify traffic, but also to evaluate how multiple detectors interact and how quickly the system can react when suspicious traffic is observed in a live environment.
+
+\section{Methodology}
+
+\subsection{System Architecture}
+
+The prototype is implemented primarily in Python and is organized around three major subsystems: the live backend capture engine, the machine learning inference layer, and the dashboard interface. The backend is responsible for acquiring traffic, transforming packets into analyzable flow features, running predictions, and managing alert or prevention state. The model layer loads previously trained machine learning artifacts and applies them to live traffic flows. The frontend dashboard provides operators with real-time insight into flow severity, model behavior, active alerts, blocked IP addresses, and testing experiments.
+
+The backend service is built with Flask and uses Scapy for packet capture and traffic generation. The service exposes API endpoints for starting and stopping capture, viewing model results, enabling or disabling prevention, launching attack simulations, exporting results, and controlling firewall actions. This structure was selected to make the project easier to demonstrate and evaluate in a research setting. It allows live experimentation while also supporting structured data collection for later analysis.
+
+\subsection{Flow Construction and Feature Extraction}
+
+Instead of analyzing isolated packets, the project groups observed traffic into bidirectional flows. This better captures communication behavior over time and makes feature extraction more informative. Flows are keyed using source and destination IP information, source and destination ports, and transport protocol. Packets are organized into forward and backward directions relative to the initiating source. This enables the calculation of directional features such as forward packet length, backward packet count, and traffic symmetry.
+
+For each flow, the system computes a set of statistical and protocol-oriented features. These include:
+
+\begin{itemize}[leftmargin=1.5em]
+\item total forward and backward packets
+\item total forward and backward bytes
+\item packet length maximum, minimum, mean, standard deviation, and variance
+\item flow bytes per second and packets per second
+\item inter-arrival time statistics for the full flow and each direction
+\item TCP flag counts such as SYN, ACK, RST, and FIN
+\item header lengths and segment-size-related fields
+\item derived ratios such as down/up traffic ratio and average packet size
+\end{itemize}
+
+These features were selected because they are useful for distinguishing common network behaviors. For instance, floods often create extreme packet rates, scans generate repeated low-volume probing behavior, and many attacks produce highly asymmetric flows. Using flow-level features also makes it easier to apply the same preprocessing pipeline across different machine learning models.
+
+\subsection{Machine Learning Design}
+
+The project uses four machine learning models with different roles:
+
+\begin{itemize}[leftmargin=1.5em]
+\item \textbf{Autoencoder:} Learns to reconstruct expected traffic behavior. High reconstruction error is treated as an anomaly signal.
+\item \textbf{Isolation Forest:} Scores traffic based on how isolated a flow appears relative to the overall data distribution.
+\item \textbf{K-Means:} Measures how far a flow lies from normal cluster centroids, providing a distance-based anomaly estimate.
+\item \textbf{Random Forest:} Performs supervised multiclass classification to label traffic as benign or as one of several known malicious categories.
+\end{itemize}
+
+These models are intentionally combined because they provide complementary information. The Random Forest is useful for interpretable labeling when traffic resembles known attack families, while the unsupervised models provide broader anomaly coverage for unexpected or weakly represented behaviors. The backend records the output of each model individually and also computes an ensemble-style risk level. This risk level is used to simplify decision-making in the UI and to support prevention policies.
+
+In addition to model predictions, heuristic checks are used when the raw model output appears too conservative for clearly suspicious traffic. For example, repeated large ICMP traffic can be promoted to a higher risk level even if the supervised classifier still returns a benign result. Similar heuristic treatment is applied to strong TCP SYN bursts and high-rate UDP behavior. This hybrid approach helps bridge the gap between purely learned behavior and practical research testing needs.
+
+\subsection{Live Testing and Real Attack Generation}
+
+A major design goal of the project is to move beyond static offline experiments. To support this, the prototype includes real traffic generation using Scapy. The current test profiles include:
+
+\begin{itemize}[leftmargin=1.5em]
+\item ICMP flood
+\item SYN flood
+\item UDP flood
+\item TCP port scan
+\end{itemize}
+
+These traffic generators send actual packets to a specified target IP and port configuration. The testing interface allows packet counts and ports to be adjusted, making the system useful for repeated experiments. Each attack launch is recorded as an experimental run with metadata such as start time, send duration, attack type, target host, and packet count.
+
+Detected flows are compared against recent attack runs using protocol, timing, target information, and flow characteristics. This allows the system to estimate experimental metrics such as matched flow count, first detection latency, and first prevention latency. The purpose of this design is to make the prototype useful as a research instrument. Instead of only saying that an attack was detected, the system can also help answer how quickly it was detected and which models reacted first.
+
+\subsection{Prevention Layer}
+
+The intrusion prevention layer is designed to be configurable and safety-aware. Automated blocking can be enabled or disabled from the dashboard, and a threshold can be chosen so that only sufficiently suspicious traffic is eligible for blocking. The system avoids blocking loopback addresses, multicast traffic, unspecified addresses, or addresses that belong to the local host. These restrictions are important because the system is intended for safe testing as well as demonstration.
+
+When prevention is enabled and a suspicious external IP exceeds the configured threshold, the backend attempts to create firewall rules through operating system tools. On Windows, the prototype uses \texttt{netsh advfirewall}; on Linux-based systems, it is structured around \texttt{iptables}. Blocked IP addresses are displayed in the dashboard, and operators can manually remove rules through an unblock control. This allows both automated and manual response behavior to be evaluated.
+
+\section{Results}
+
+The current version of the project achieves a fully integrated prototype that combines live traffic capture, machine learning inference, dashboard visualization, attack testing, and active defense. This is a significant improvement over the earlier notebook-oriented development phase because the system now behaves as a live analysis platform rather than only a model sandbox. Traffic can be captured from a chosen interface, flows can be scored in near real time, and the resulting data can be viewed in ways that support both demonstration and experimental comparison.
+
+One of the most important outcomes is the visibility of model behavior side by side. The dashboard now exposes model comparison statistics that summarize how often each detector flags suspicious traffic. This makes it easier to see the strengths of the layered approach. For example, the supervised Random Forest can provide useful labels when traffic matches known patterns, while the autoencoder, Isolation Forest, and K-Means components can still identify unusual behavior even when no strong known-class label is available. This layered perspective is more informative than a single overall score because it reveals differences in model sensitivity.
+
+The addition of research-oriented attack tracking also improves the usefulness of the prototype. Each real test run can now be associated with matched flows, detection timing, and prevention timing. This matters because attack types do not manifest equally. Flooding activity tends to create stronger throughput and rate-based signals, while scanning behavior may generate numerous short probes with low byte counts. Tracking those differences helps support a more meaningful evaluation of the layered architecture.
+
+The results so far suggest several observations. First, combining supervised and unsupervised methods produces a broader detection picture than relying on a single classifier. Second, heuristic promotion rules help improve practical sensitivity when raw model outputs appear overly conservative. Third, prevention needs careful threshold tuning because detection and blocking are not equivalent goals. A system that is useful for alerting may still require stricter logic before it should automatically block traffic.
+
+There are also important limitations at this stage. The stored model artifacts were produced in a slightly different software environment, which leads to compatibility warnings during loading. Although the models still load and run, a final evaluation should use consistently exported artifacts to improve reproducibility. In addition, the prevention component requires administrator privileges to apply firewall changes, and therefore some evaluation scenarios depend on how the system is launched. Finally, a full scientific evaluation still needs repeated controlled trials and formal metrics such as precision, recall, false positive rate, and false negative rate. This draft focuses on architecture and early functionality rather than claiming final performance values.
+
+\section{Conclusion}
+
+This project demonstrates the feasibility of a layered IDS/IPS architecture that combines multiple machine learning perspectives with live packet capture and active defense controls. By integrating an autoencoder, Isolation Forest, K-Means, and Random Forest into a single prototype, the system is able to observe live traffic, compare model outputs, estimate flow severity, and trigger optional response actions. The use of real attack traffic rather than purely synthetic rows makes the current implementation more valuable for research and demonstration purposes.
+
+At this initial submission stage, the project has progressed from concept to a working experimental platform. The system does not yet claim a final optimized evaluation, but it already supports the type of iterative testing that a strong final project requires. It can capture traffic, generate real attack scenarios, compare models, measure detection timing, and track prevention activity. These capabilities provide a solid foundation for more rigorous evaluation in later phases.
+
+Future work will focus on three main areas. First, the machine learning environment and serialized artifacts should be aligned to remove compatibility concerns. Second, the testing methodology should be expanded to include repeated controlled trials and more formal performance metrics. Third, the prevention layer should be tuned further so that blocking behavior can be evaluated under different thresholds and risk policies. With these improvements, the project can move from a capable prototype to a more rigorous and defensible research implementation.
+
+\section*{Acknowledgment}
+
+This draft represents an initial project submission and is expected to evolve as implementation details, testing procedures, and final experimental results are refined throughout the semester.
+
+\end{document}
