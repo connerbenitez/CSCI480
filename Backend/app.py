@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import sys
@@ -62,6 +63,13 @@ CAPTURE_PACKET_BATCH = 60
 CAPTURE_TIMEOUT_SECONDS = 3
 BPF_FILTER = "ip and not (dst host 255.255.255.255 or dst net 224.0.0.0/4)"
 RISK_RANK = {"normal": 0, "low": 1, "medium": 2, "high": 3}
+RESPONSE_MODES = {
+    "watch_only": "Watchlist Only",
+    "block_inbound": "Inbound Containment",
+    "block_bidirectional": "Full Containment",
+    "shield_service_port": "Shield Local Service Port",
+    "deploy_decoy": "Adaptive Decoy",
+}
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 AUTH_PORTS = {21, 22, 23, 25, 110, 143, 389, 445, 1433, 1521, 3306, 3389, 5432, 5900, 6379}
 DNS_PORTS = {53, 5353}
@@ -73,12 +81,18 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from attack_simulator import available_attack_types, simulate_attack
+from decoy_manager import DecoyManager
 from ips_actions import block_ip as firewall_block_ip
+from ips_actions import block_ip_inbound as firewall_block_ip_inbound
 from ips_actions import normalize_ip, unblock_ip as firewall_unblock_ip
+from ips_actions import shield_local_port as firewall_shield_local_port
+from ips_actions import unshield_local_port as firewall_unshield_local_port
 
 app = Flask(__name__)
 CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
+DECOY_MANAGER = DecoyManager()
+atexit.register(DECOY_MANAGER.stop_all)
 
 
 def install_pickle_compat_aliases() -> None:
@@ -128,6 +142,19 @@ def load_models_bundle():
 
 
 MODELS, PREDICT_ALL, MODEL_LOAD_ERROR = load_models_bundle()
+AVAILABLE_MODEL_KEYS = tuple(MODELS.keys()) if MODELS else tuple()
+MODEL_LABELS = {
+    "rf": "Random Forest",
+    "gbdt": "Gradient Boosted Tree",
+    "ppo": "PPO Policy",
+    "gnn": "Graph Neural Network",
+    "ae": "Autoencoder",
+    "iso": "Isolation Forest",
+    "kmeans": "K-Means",
+}
+DEFAULT_ENABLED_MODEL_KEYS = tuple(
+    key for key in ("rf", "gbdt", "ppo", "gnn", "kmeans", "ae", "iso") if key in AVAILABLE_MODEL_KEYS and key not in {"ae", "iso"}
+) or AVAILABLE_MODEL_KEYS
 
 
 class RuntimeState:
@@ -140,16 +167,21 @@ class RuntimeState:
         self.results: deque[dict] = deque(maxlen=MAX_RESULTS)
         self.alerts: deque[dict] = deque(maxlen=MAX_ALERTS)
         self.blocked_ips: dict[str, dict] = {}
+        self.watched_ips: dict[str, dict] = {}
+        self.shielded_ports: dict[str, dict] = {}
         self.prevention_enabled = False
         self.auto_block_threshold = "high"
+        self.response_mode = "block_bidirectional"
         self.healing_enabled = True
         self.healing_window_seconds = 180
         self.healed_events: deque[dict] = deque(maxlen=MAX_HEAL_HISTORY)
+        self.defense_actions: deque[dict] = deque(maxlen=120)
         self.attack_runs: deque[dict] = deque(maxlen=50)
         self.failed_ifaces: set[str] = set()
         self.recent_alerts: dict[tuple, float] = {}
         self.packet_debug: deque[dict] = deque(maxlen=80)
         self.capture_stats: Counter = Counter()
+        self.enabled_models: set[str] = set(DEFAULT_ENABLED_MODEL_KEYS)
 
 
 STATE = RuntimeState()
@@ -181,6 +213,28 @@ def to_json_safe(value):
     if isinstance(value, np.ndarray):
         return value.tolist()
     return value
+
+
+def model_settings_snapshot() -> dict:
+    with STATE.lock:
+        enabled_models = set(STATE.enabled_models)
+    enabled = sorted(enabled_models)
+    available = [
+        {
+            "key": key,
+            "label": MODEL_LABELS.get(key, key.upper()),
+            "enabled": key in enabled_models,
+            "loaded": key in AVAILABLE_MODEL_KEYS,
+        }
+        for key in MODEL_LABELS
+        if key in AVAILABLE_MODEL_KEYS or key in enabled_models
+    ]
+    return {
+        "models_loaded": MODELS is not None,
+        "model_error": MODEL_LOAD_ERROR,
+        "available_models": available,
+        "enabled_models": enabled,
+    }
 
 
 def now_ts() -> float:
@@ -494,6 +548,82 @@ def normalize_block_entry(ip: str, metadata: dict) -> dict:
     return entry
 
 
+def normalize_watch_entry(ip: str, metadata: dict) -> dict:
+    entry = dict(metadata or {})
+    entry["ip"] = ip
+    entry["response_method"] = entry.get("response_method") or "watch_only"
+    entry["status"] = entry.get("status") or "watching"
+    entry["watched_at"] = entry.get("watched_at") or now_iso()
+    return entry
+
+
+def shield_key(port: int, proto: str = "TCP") -> str:
+    return f"{str(proto or 'TCP').upper()}:{int(port)}"
+
+
+def normalize_shield_entry(port: int, proto: str, metadata: dict) -> dict:
+    entry = dict(metadata or {})
+    entry["port"] = int(port)
+    entry["proto"] = str(proto or "TCP").upper()
+    entry["key"] = shield_key(entry["port"], entry["proto"])
+    entry["response_method"] = entry.get("response_method") or "shield_service_port"
+    entry["status"] = entry.get("status") or ("active" if entry.get("applied") else "pending")
+    entry["shielded_at"] = entry.get("shielded_at") or now_iso()
+    return entry
+
+
+def record_defense_action(kind: str, subject: str, result: dict | None = None, **extra) -> dict:
+    event = {
+        "timestamp": now_iso(),
+        "kind": kind,
+        "subject": subject,
+        "success": bool((result or {}).get("success", True)),
+        "message": str((result or {}).get("message", "") or ""),
+        **extra,
+    }
+    with STATE.lock:
+        STATE.defense_actions.appendleft(event)
+    return event
+
+
+def resolve_local_service_port(record: dict) -> int | None:
+    flow_key = record.get("flow_key", {}) if isinstance(record.get("flow_key"), dict) else {}
+    src_ip = str(flow_key.get("src_ip", "") or "")
+    dst_ip = str(flow_key.get("dst_ip", "") or "")
+    sport = int(flow_key.get("sport", 0) or 0)
+    dport = int(flow_key.get("dport", 0) or 0)
+    local_ips = {"127.0.0.1", "::1"}
+    for addrs in psutil.net_if_addrs().values():
+        for addr in addrs:
+            family_name = getattr(addr.family, "name", str(addr.family))
+            if family_name in ("AF_INET", "AF_INET6"):
+                local_ips.add(str(addr.address).split("%")[0])
+    if dst_ip in local_ips and dport:
+        return dport
+    if src_ip in local_ips and sport:
+        return sport
+    return dport or sport or None
+
+
+def choose_decoy_profile(record: dict) -> str:
+    flow_key = record.get("flow_key", {}) if isinstance(record.get("flow_key"), dict) else {}
+    proto = int(flow_key.get("proto", 0) or 0)
+    port_candidates = [int(flow_key.get("dport", 0) or 0), int(flow_key.get("sport", 0) or 0)]
+    port = next((value for value in port_candidates if value > 0), 0)
+    label = str(record.get("rf_labels", "") or "").upper()
+    heuristics = set(record.get("heuristics", []) or [])
+
+    if port in {22, 2222, 23, 3389} or port in AUTH_PORTS or label in {"AUTH-PROBE", "BRUTEFORCE"}:
+        return "fake_ssh"
+    if port in {3306, 33060, 5432, 1433, 1521, 6379, 27017}:
+        return "fake_database"
+    if port in {502, 1502, 44818, 20000, 102, 2404, 15020} or "industrial" in heuristics:
+        return "fake_modbus"
+    if proto == 6 and (port in {80, 443, 8080, 8088, 8000, 8443} or "packet_injection" in heuristics or label in {"PORTSCAN", "PACKET-INJECTION"}):
+        return "fake_http_admin"
+    return "fake_http_admin"
+
+
 def persist_results() -> None:
     with STATE.lock:
         RESULTS_FILE.write_text(json.dumps(to_json_safe(list(STATE.results)), indent=2), encoding="utf-8")
@@ -502,12 +632,17 @@ def persist_results() -> None:
                 to_json_safe(
                     {
                         "blocked_ips": STATE.blocked_ips,
+                        "watched_ips": STATE.watched_ips,
+                        "shielded_ports": STATE.shielded_ports,
                         "prevention_enabled": STATE.prevention_enabled,
                         "auto_block_threshold": STATE.auto_block_threshold,
+                        "response_mode": STATE.response_mode,
                         "healing_enabled": STATE.healing_enabled,
                         "healing_window_seconds": STATE.healing_window_seconds,
                         "healed_events": list(STATE.healed_events),
+                        "defense_actions": list(STATE.defense_actions),
                         "selected_iface": STATE.selected_iface,
+                        "enabled_models": sorted(STATE.enabled_models),
                     }
                 ),
                 indent=2,
@@ -543,12 +678,29 @@ def load_persisted_state() -> None:
                     blocked_ips = raw_state.get("blocked_ips", {})
                     if isinstance(blocked_ips, dict):
                         STATE.blocked_ips = {ip: normalize_block_entry(ip, metadata) for ip, metadata in blocked_ips.items() if isinstance(metadata, dict)}
+                    watched_ips = raw_state.get("watched_ips", {})
+                    if isinstance(watched_ips, dict):
+                        STATE.watched_ips = {ip: normalize_watch_entry(ip, metadata) for ip, metadata in watched_ips.items() if isinstance(metadata, dict)}
+                    shielded_ports = raw_state.get("shielded_ports", {})
+                    if isinstance(shielded_ports, dict):
+                        normalized_shields = {}
+                        for key, metadata in shielded_ports.items():
+                            if not isinstance(metadata, dict):
+                                continue
+                            port = int(metadata.get("port", 0) or 0)
+                            proto = str(metadata.get("proto", "TCP") or "TCP").upper()
+                            normalized = normalize_shield_entry(port, proto, metadata)
+                            normalized_shields[normalized["key"]] = normalized
+                        STATE.shielded_ports = normalized_shields
                     prevention_enabled = raw_state.get("prevention_enabled")
                     if isinstance(prevention_enabled, bool):
                         STATE.prevention_enabled = prevention_enabled
                     threshold = str(raw_state.get("auto_block_threshold", STATE.auto_block_threshold)).lower()
                     if threshold in RISK_RANK:
                         STATE.auto_block_threshold = threshold
+                    response_mode = str(raw_state.get("response_mode", STATE.response_mode)).lower()
+                    if response_mode in RESPONSE_MODES:
+                        STATE.response_mode = response_mode
                     healing_enabled = raw_state.get("healing_enabled")
                     if isinstance(healing_enabled, bool):
                         STATE.healing_enabled = healing_enabled
@@ -558,9 +710,16 @@ def load_persisted_state() -> None:
                     healed_events = raw_state.get("healed_events", [])
                     if isinstance(healed_events, list):
                         STATE.healed_events = deque(healed_events[:MAX_HEAL_HISTORY], maxlen=MAX_HEAL_HISTORY)
+                    defense_actions = raw_state.get("defense_actions", [])
+                    if isinstance(defense_actions, list):
+                        STATE.defense_actions = deque(defense_actions[:120], maxlen=120)
                     selected_iface = raw_state.get("selected_iface")
                     if isinstance(selected_iface, str):
                         STATE.selected_iface = selected_iface
+                    enabled_models = raw_state.get("enabled_models")
+                    if isinstance(enabled_models, list):
+                        requested = {str(name) for name in enabled_models if str(name) in AVAILABLE_MODEL_KEYS}
+                        STATE.enabled_models = requested or set(DEFAULT_ENABLED_MODEL_KEYS)
                     if STATE.blocked_ips:
                         STATE.blocked_ips = {ip: normalize_block_entry(ip, metadata) for ip, metadata in STATE.blocked_ips.items()}
             except Exception as exc:
@@ -833,6 +992,43 @@ def pcap_profile_info(pcap_name: str) -> dict:
     }
 
 
+def benchmark_attack_pair_keys(records: list[dict]) -> set[tuple]:
+    benchmark_pairs: set[tuple] = set()
+    for record in records:
+        pair_key = replay_pair_key(record)
+        heuristics = set(record.get("heuristics", []) or [])
+        rf_label = str(record.get("rf_labels", "") or "").upper()
+        bwd_ttl_unique = int(record.get("bwd_ttl_unique_count", 0) or 0)
+        bwd_http_status_count = int(record.get("bwd_http_status_count", 0) or 0)
+        bwd_synack_count = int(record.get("bwd_synack_count", 0) or 0)
+        rst_flag_count = int(record.get("rst_flag_count", 0) or 0)
+        bwd_seq_dup = int(record.get("bwd_tcp_seq_dup_count", 0) or 0)
+        fwd_seq_dup = int(record.get("fwd_tcp_seq_dup_count", 0) or 0)
+        fwd_ack_dup = int(record.get("fwd_tcp_ack_dup_count", 0) or 0)
+        bwd_ack_dup = int(record.get("bwd_tcp_ack_dup_count", 0) or 0)
+
+        strong_injection_heuristic = bool({"packet_injection", "packet_injection_cluster", "real_attack_match"} & heuristics)
+        strong_packet_conflict = (
+            bwd_ttl_unique >= 2
+            or bwd_http_status_count >= 2
+            or bwd_synack_count >= 2
+            or (
+                rst_flag_count >= 3
+                and bwd_seq_dup >= 2
+                and (fwd_ack_dup >= 12 or bwd_ack_dup >= 12)
+            )
+            or (
+                fwd_seq_dup >= 14
+                and bwd_seq_dup >= 2
+                and rst_flag_count >= 2
+                and (fwd_ack_dup >= 12 or bwd_ack_dup >= 12)
+            )
+        )
+        if strong_injection_heuristic or rf_label == "PACKET-INJECTION" or strong_packet_conflict:
+            benchmark_pairs.add(pair_key)
+    return benchmark_pairs
+
+
 def save_uploaded_pcap(file_storage) -> dict:
     if file_storage is None:
         raise ValueError("No file was uploaded")
@@ -1044,6 +1240,7 @@ def process_pcap_replay_async(
             total_pairs = set()
             suspicious_pairs = set()
             elevated_pairs = set()
+            attack_benchmark_pairs = set()
             first_label = None
             suspicious_label_counter = Counter()
             for record in replay_records:
@@ -1071,6 +1268,7 @@ def process_pcap_replay_async(
                     elevated_pairs.add(pair_key)
                     if first_label is None:
                         first_label = record.get("rf_labels")
+            attack_benchmark_pairs = benchmark_attack_pair_keys(replay_records)
             total_pair_count = len(total_pairs)
             suspicious_pair_count = len(suspicious_pairs)
             elevated_pair_count = len(elevated_pairs)
@@ -1078,12 +1276,18 @@ def process_pcap_replay_async(
             benchmark_profile = str(profile_info.get("benchmark_profile", "unknown") or "unknown")
             benchmark_kind = str(profile_info.get("benchmark_score_kind", "mixed_quiet") or "mixed_quiet")
             if benchmark_kind == "attack_coverage":
-                benchmark_score_pct = round((elevated_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0
+                benchmark_total_pairs = len(attack_benchmark_pairs) or elevated_pair_count or suspicious_pair_count or total_pair_count
+                correctly_detected_pairs = len(elevated_pairs & attack_benchmark_pairs) if attack_benchmark_pairs else elevated_pair_count
+                benchmark_score_pct = round((correctly_detected_pairs / benchmark_total_pairs) * 100, 2) if benchmark_total_pairs else 0.0
                 benchmark_score_label = "Attack coverage"
             elif benchmark_kind == "baseline_quiet":
+                benchmark_total_pairs = total_pair_count
+                correctly_detected_pairs = elevated_pair_count
                 benchmark_score_pct = round(100.0 - ((elevated_pair_count / total_pair_count) * 100), 2) if total_pair_count else 100.0
                 benchmark_score_label = "Quiet baseline"
             else:
+                benchmark_total_pairs = total_pair_count
+                correctly_detected_pairs = elevated_pair_count
                 benchmark_score_pct = round(100.0 - ((elevated_pair_count / total_pair_count) * 100), 2) if total_pair_count else 100.0
                 benchmark_score_label = "Noise control"
             append_results(replay_records)
@@ -1091,12 +1295,14 @@ def process_pcap_replay_async(
                 replay_id,
                 matched_flows=len(replay_records),
                 total_flow_count=len(replay_records),
-                total_pair_count=total_pair_count,
+                total_pair_count=benchmark_total_pairs,
                 attack_candidate_flows=suspicious_flow_count,
                 detection_count=suspicious_detected_flows,
                 elevated_detection_count=elevated_detected_flows,
                 suspicious_pair_count=suspicious_pair_count,
                 elevated_pair_count=elevated_pair_count,
+                benchmark_attack_pair_count=benchmark_total_pairs,
+                correctly_detected_pairs=correctly_detected_pairs,
                 first_detected_label=first_label,
                 top_detected_labels=[{"label": label, "count": count} for label, count in suspicious_label_counter.most_common(5)],
                 replay_phase="finalizing",
@@ -1138,12 +1344,14 @@ def process_pcap_replay_async(
                 sent_packet_count=int(replay.get("packet_count") or 0) if send_packets else 0,
                 matched_flows=len(replay_records),
                 total_flow_count=len(replay_records),
-                total_pair_count=total_pair_count,
+                total_pair_count=benchmark_total_pairs,
                 attack_candidate_flows=suspicious_flow_count,
                 detection_count=suspicious_detected_flows,
                 elevated_detection_count=elevated_detected_flows,
                 suspicious_pair_count=suspicious_pair_count,
                 elevated_pair_count=elevated_pair_count,
+                benchmark_attack_pair_count=benchmark_total_pairs,
+                correctly_detected_pairs=correctly_detected_pairs,
                 first_detected_label=first_label,
                 top_detected_labels=[{"label": label, "count": count} for label, count in suspicious_label_counter.most_common(5)],
                 replay_progress_pct=100.0,
@@ -1599,6 +1807,103 @@ def should_auto_block(record: dict) -> bool:
     return STATE.prevention_enabled and RISK_RANK.get(severity, 0) >= RISK_RANK.get(STATE.auto_block_threshold, 3)
 
 
+def should_apply_auto_response(record: dict) -> bool:
+    severity = str(record.get("severity", "normal")).lower()
+    return STATE.prevention_enabled and RISK_RANK.get(severity, 0) >= RISK_RANK.get(STATE.auto_block_threshold, 3)
+
+
+def apply_response_method(record: dict) -> dict | None:
+    if not should_apply_auto_response(record):
+        return None
+
+    mode = str(STATE.response_mode or "block_bidirectional").lower()
+    flow_key = record.get("flow_key", {}) if isinstance(record.get("flow_key"), dict) else {}
+    candidate_ip = str(record.get("candidate_block_ip", "") or "").strip()
+    reason = f"Auto-response for {record.get('rf_labels', 'anomalous traffic')}"
+
+    if mode == "watch_only" and candidate_ip:
+        entry = normalize_watch_entry(
+            candidate_ip,
+            {
+                "reason": reason,
+                "message": "Host added to watchlist for continued scrutiny.",
+                "response_method": "watch_only",
+                "block_source": "auto",
+                "status": "watching",
+                "watched_at": now_iso(),
+                "severity": record.get("severity"),
+            },
+        )
+        with STATE.lock:
+            STATE.watched_ips[candidate_ip] = entry
+        record_defense_action("watch_ip", candidate_ip, entry, mode=mode, automatic=True)
+        return entry
+
+    if mode == "block_inbound" and candidate_ip:
+        result = firewall_block_ip_inbound(candidate_ip, reason)
+        result["block_source"] = "auto"
+        result["heal_at"] = compute_heal_at(result.get("blocked_at"), STATE.healing_window_seconds)
+        result["heal_status"] = "scheduled"
+        if result.get("success"):
+            with STATE.lock:
+                STATE.blocked_ips[candidate_ip] = normalize_block_entry(candidate_ip, result)
+        record_defense_action("block_inbound", candidate_ip, result, mode=mode, automatic=True)
+        return result
+
+    if mode == "shield_service_port":
+        local_port = resolve_local_service_port(record)
+        proto_name = PROTO_NAMES.get(int(flow_key.get("proto", 0) or 0), "TCP")
+        shield_proto = proto_name if proto_name in {"TCP", "UDP"} else "TCP"
+        if local_port:
+            result = firewall_shield_local_port(local_port, shield_proto, reason=f"Shielded local service port for {record.get('rf_labels', 'anomalous traffic')}")
+            result["block_source"] = "auto"
+            if result.get("success"):
+                with STATE.lock:
+                    normalized = normalize_shield_entry(local_port, shield_proto, result)
+                    STATE.shielded_ports[normalized["key"]] = normalized
+            record_defense_action("shield_port", f"{shield_proto}:{local_port}", result, mode=mode, automatic=True)
+            return result
+
+    if mode == "deploy_decoy":
+        profile_id = choose_decoy_profile(record)
+        result = DECOY_MANAGER.deploy_decoy(
+            profile_id,
+            reason=reason,
+            source_ip=candidate_ip or None,
+            auto_deployed=True,
+        )
+        result["response_method"] = "deploy_decoy"
+        record_defense_action("deploy_decoy", profile_id, result, mode=mode, automatic=True, candidate_ip=candidate_ip)
+        if candidate_ip:
+            watch_entry = normalize_watch_entry(
+                candidate_ip,
+                {
+                    "reason": reason,
+                    "message": f"Source redirected into {profile_id} decoy monitoring.",
+                    "response_method": "deploy_decoy",
+                    "block_source": "auto",
+                    "status": "watching",
+                    "watched_at": now_iso(),
+                    "severity": record.get("severity"),
+                },
+            )
+            with STATE.lock:
+                STATE.watched_ips[candidate_ip] = watch_entry
+        return result
+
+    if candidate_ip:
+        result = firewall_block_ip(candidate_ip, reason)
+        result["block_source"] = "auto"
+        result["heal_at"] = compute_heal_at(result.get("blocked_at"), STATE.healing_window_seconds)
+        result["heal_status"] = "scheduled"
+        if result.get("success"):
+            with STATE.lock:
+                STATE.blocked_ips[candidate_ip] = normalize_block_entry(candidate_ip, result)
+        record_defense_action("block_bidirectional", candidate_ip, result, mode=mode, automatic=True)
+        return result
+    return None
+
+
 def is_auto_block_entry(metadata: dict) -> bool:
     source = str(metadata.get("block_source", "") or "").lower()
     reason = str(metadata.get("reason", "") or "")
@@ -1684,11 +1989,33 @@ def clear_auto_blocks() -> list[str]:
     removed: list[str] = []
     with STATE.lock:
         auto_ips = [ip for ip, metadata in STATE.blocked_ips.items() if isinstance(metadata, dict) and is_auto_block_entry(metadata)]
+        auto_watch_ips = [
+            ip
+            for ip, metadata in STATE.watched_ips.items()
+            if isinstance(metadata, dict) and str(metadata.get("block_source", "") or "").lower() == "auto"
+        ]
+        auto_shields = [
+            (key, dict(metadata))
+            for key, metadata in STATE.shielded_ports.items()
+            if isinstance(metadata, dict) and str(metadata.get("block_source", "") or "").lower() == "auto"
+        ]
 
     for ip in auto_ips:
         result = heal_block(ip, trigger="disable_prevention")
         if result.get("success"):
             removed.append(ip)
+    with STATE.lock:
+        for ip in auto_watch_ips:
+            STATE.watched_ips.pop(ip, None)
+            removed.append(ip)
+    for key, metadata in auto_shields:
+        port = int(metadata.get("port", 0) or 0)
+        proto = str(metadata.get("proto", "TCP") or "TCP").upper()
+        result = firewall_unshield_local_port(port, proto)
+        if result.get("success"):
+            with STATE.lock:
+                STATE.shielded_ports.pop(key, None)
+            removed.append(key)
     return removed
 
 
@@ -1737,6 +2064,71 @@ def add_alert(record: dict, title: str, message: str, blocked: bool = False) -> 
     with STATE.lock:
         STATE.alerts.appendleft(alert)
     return alert
+
+
+def handle_decoy_event(event: dict) -> None:
+    source_ip = str(event.get("source_ip", "") or "")
+    listener_host = str(event.get("listener_host", "") or "0.0.0.0")
+    listener_port = int(event.get("listener_port", 0) or 0)
+    source_port = int(event.get("source_port", 0) or 0)
+    profile_label = str(event.get("label", "Decoy") or "Decoy")
+    payload_preview = str(event.get("payload_preview", "") or "")
+    event_record = {
+        "timestamp": event.get("timestamp", now_iso()),
+        "rf_labels": "DECOY-HIT",
+        "severity": "high",
+        "ensemble_risk": "high",
+        "candidate_block_ip": source_ip,
+        "heuristics": ["decoy_hit"],
+        "capture_origin": "decoy",
+        "response_method": "deploy_decoy",
+        "message": f"{profile_label} captured activity from {source_ip}:{source_port}",
+        "flow_key": {
+            "src_ip": source_ip,
+            "dst_ip": listener_host,
+            "sport": source_port,
+            "dport": listener_port,
+            "proto": 6,
+        },
+    }
+    if payload_preview:
+        event_record["payload_preview"] = payload_preview
+    with STATE.lock:
+        STATE.results.appendleft(event_record)
+    add_alert(
+        event_record,
+        "DECOY interaction",
+        f"{profile_label} captured traffic from {source_ip}:{source_port} on local port {listener_port}.",
+        blocked=False,
+    )
+    record_defense_action(
+        "decoy_hit",
+        source_ip or f"port:{listener_port}",
+        {"success": True, "message": f"{profile_label} recorded a decoy interaction."},
+        profile_id=event.get("profile_id"),
+        listener_port=listener_port,
+        auto_deployed=bool(event.get("auto_deployed")),
+    )
+
+    recent_count = DECOY_MANAGER.count_recent_events_for_source(source_ip, within_seconds=900)
+    if recent_count < 3:
+        return
+
+    with STATE.lock:
+        prevention_enabled = STATE.prevention_enabled
+        already_blocked = source_ip in STATE.blocked_ips
+    if prevention_enabled and source_ip and not already_blocked:
+        result = firewall_block_ip_inbound(source_ip, f"Repeated decoy interaction against {profile_label}")
+        result["block_source"] = "auto"
+        result["heal_at"] = compute_heal_at(result.get("blocked_at"), STATE.healing_window_seconds)
+        result["heal_status"] = "scheduled"
+        if result.get("success"):
+            with STATE.lock:
+                STATE.blocked_ips[source_ip] = normalize_block_entry(source_ip, result)
+            record_defense_action("decoy_escalation", source_ip, result, mode="deploy_decoy", automatic=True)
+
+
+DECOY_MANAGER._event_callback = handle_decoy_event
 
 
 def classify_model_votes(pred: dict) -> dict:
@@ -2346,7 +2738,8 @@ def score_rows(rows: list[dict], fast_mode: bool = False) -> list[dict]:
             models_for_prediction = MODELS
             if fast_mode:
                 models_for_prediction = {key: value for key, value in MODELS.items() if key != "gbdt"}
-            preds = PREDICT_ALL(models_for_prediction, pd.DataFrame(rows))
+            enabled_models = sorted(set(STATE.enabled_models) & set(models_for_prediction.keys()))
+            preds = PREDICT_ALL(models_for_prediction, pd.DataFrame(rows), enabled_models=enabled_models)
         except Exception as exc:
             print(f"Prediction error: {exc}")
             preds = [{"ensemble_risk": "error", "ae_anomaly": False, "iso_risk": "error", "kmeans_risk": "error", "rf_labels": "ERROR"} for _ in rows]
@@ -2431,18 +2824,15 @@ def score_rows(rows: list[dict], fast_mode: bool = False) -> list[dict]:
     for record in scored_records:
         blocked = False
         candidate_ip = record.get("candidate_block_ip")
-        if should_auto_block(record) and candidate_ip:
-            firewall_result = firewall_block_ip(candidate_ip, f"Auto-blocked for {record.get('rf_labels', 'anomalous traffic')}")
-            firewall_result["block_source"] = "auto"
-            firewall_result["heal_at"] = compute_heal_at(firewall_result.get("blocked_at"), STATE.healing_window_seconds)
-            firewall_result["heal_status"] = "scheduled"
-            record["prevention_result"] = firewall_result
-            if firewall_result.get("success"):
-                blocked = True
-                with STATE.lock:
-                    STATE.blocked_ips[candidate_ip] = normalize_block_entry(candidate_ip, firewall_result)
+        response_result = apply_response_method(record)
+        if response_result:
+            record["prevention_result"] = response_result
+            response_method = str(response_result.get("response_method", "") or "")
+            blocked = bool(response_result.get("success")) and response_method in {"block_bidirectional", "block_inbound", "shield_service_port"}
         elif candidate_ip and candidate_ip in STATE.blocked_ips:
             record["prevention_result"] = STATE.blocked_ips[candidate_ip]
+        elif candidate_ip and candidate_ip in STATE.watched_ips:
+            record["prevention_result"] = STATE.watched_ips[candidate_ip]
 
         if str(record.get("severity", "normal")).lower() in ("high", "medium"):
             src_ip = str((record.get("flow_key", {}) or {}).get("src_ip", "") or "")
@@ -2495,6 +2885,8 @@ def analysis_snapshot() -> dict:
         results = list(STATE.results)
         alerts = list(STATE.alerts)
         blocked_ips = dict(STATE.blocked_ips)
+        watched_ips = dict(STATE.watched_ips)
+        shielded_ports = dict(STATE.shielded_ports)
         attack_runs = list(STATE.attack_runs)
         pcap_runs = [
             dict(run)
@@ -2504,8 +2896,14 @@ def analysis_snapshot() -> dict:
         packet_debug = list(STATE.packet_debug)
         capture_stats = dict(STATE.capture_stats)
         healed_events = list(STATE.healed_events)
+        defense_actions = list(STATE.defense_actions)
+        prevention_enabled = STATE.prevention_enabled
+        auto_block_threshold = STATE.auto_block_threshold
+        response_mode = STATE.response_mode
         healing_enabled = STATE.healing_enabled
         healing_window_seconds = STATE.healing_window_seconds
+    active_decoys = DECOY_MANAGER.list_active_decoys()
+    recent_decoy_events = DECOY_MANAGER.recent_events(20)
 
     healing_queue = [
         {"ip": ip, **metadata}
@@ -2525,6 +2923,8 @@ def analysis_snapshot() -> dict:
             "ae_anomalies": {"count": 0, "pct": 0},
             "alerts_count": len(alerts),
             "blocked_count": len(blocked_ips),
+            "watched_count": len(watched_ips),
+            "shielded_port_count": len(shielded_ports),
             "model_agreement": {"core_models_agree": 0, "pct": 0},
             "model_comparison": {},
             "model_matrix": {},
@@ -2536,10 +2936,21 @@ def analysis_snapshot() -> dict:
             "packet_debug": packet_debug,
             "attack_runs": attack_runs,
             "pcap_runs": pcap_runs,
+            "prevention_enabled": prevention_enabled,
+            "auto_block_threshold": auto_block_threshold,
+            "response_mode": response_mode,
             "healing_enabled": healing_enabled,
             "healing_window_seconds": healing_window_seconds,
             "healing_queue": healing_queue,
             "healing_history": healed_events,
+            "watched_ips": list(watched_ips.values()),
+            "shielded_ports": list(shielded_ports.values()),
+            "active_decoys": active_decoys,
+            "recent_decoy_events": recent_decoy_events,
+            "active_decoy_count": len(active_decoys),
+            "recent_decoy_event_count": len(recent_decoy_events),
+            "defense_actions": defense_actions,
+            "model_settings": model_settings_snapshot(),
         }
 
     risk_distribution = Counter(r.get("ensemble_risk", "unknown") for r in results)
@@ -2678,6 +3089,8 @@ def analysis_snapshot() -> dict:
         "ae_anomalies": {"count": ae_count, "pct": ae_count / len(results) * 100},
         "alerts_count": len(alerts),
         "blocked_count": len(blocked_ips),
+        "watched_count": len(watched_ips),
+        "shielded_port_count": len(shielded_ports),
         "model_agreement": {"core_models_agree": agree_count, "pct": agree_count / len(results) * 100},
         "model_comparison": model_comparison,
         "model_matrix": model_matrix,
@@ -2689,10 +3102,21 @@ def analysis_snapshot() -> dict:
         "packet_debug": packet_debug,
         "attack_runs": attack_runs,
         "pcap_runs": pcap_runs,
+        "prevention_enabled": prevention_enabled,
+        "auto_block_threshold": auto_block_threshold,
+        "response_mode": response_mode,
         "healing_enabled": healing_enabled,
         "healing_window_seconds": healing_window_seconds,
         "healing_queue": healing_queue,
         "healing_history": healed_events,
+        "watched_ips": list(watched_ips.values()),
+        "shielded_ports": list(shielded_ports.values()),
+        "active_decoys": active_decoys,
+        "recent_decoy_events": recent_decoy_events,
+        "active_decoy_count": len(active_decoys),
+        "recent_decoy_event_count": len(recent_decoy_events),
+        "defense_actions": defense_actions,
+        "model_settings": model_settings_snapshot(),
     }
 
 
@@ -2747,10 +3171,16 @@ def health():
                 "model_error": MODEL_LOAD_ERROR,
                 "prevention_enabled": STATE.prevention_enabled,
                 "auto_block_threshold": STATE.auto_block_threshold,
+                "response_mode": STATE.response_mode,
                 "healing_enabled": STATE.healing_enabled,
                 "healing_window_seconds": STATE.healing_window_seconds,
                 "blocked_count": len(STATE.blocked_ips),
+                "watched_count": len(STATE.watched_ips),
+                "shielded_port_count": len(STATE.shielded_ports),
+                "active_decoy_count": len(DECOY_MANAGER.list_active_decoys()),
+                "recent_decoy_event_count": len(DECOY_MANAGER.recent_events(20)),
                 "capture_stats": dict(STATE.capture_stats),
+                "enabled_models": sorted(STATE.enabled_models),
             }
         )
 
@@ -2771,6 +3201,26 @@ def interfaces():
 @app.route("/attack_catalog")
 def attack_catalog():
     return jsonify({"attacks": available_attack_types()})
+
+
+@app.route("/model_settings", methods=["GET", "POST"])
+def model_settings():
+    if request.method == "GET":
+        return jsonify(model_settings_snapshot())
+
+    payload = request.get_json(silent=True) or {}
+    enabled_models = payload.get("enabled_models", [])
+    if not isinstance(enabled_models, list):
+        return jsonify({"error": "enabled_models must be a list"}), 400
+
+    requested = {str(name) for name in enabled_models if str(name) in AVAILABLE_MODEL_KEYS}
+    if not requested:
+        return jsonify({"error": "Select at least one loaded model"}), 400
+
+    with STATE.lock:
+        STATE.enabled_models = requested
+    persist_results()
+    return jsonify(model_settings_snapshot())
 
 
 @app.route("/pcap_catalog")
@@ -2809,10 +3259,16 @@ def status():
                 "blocked_count": len(STATE.blocked_ips),
                 "prevention_enabled": STATE.prevention_enabled,
                 "auto_block_threshold": STATE.auto_block_threshold,
+                "response_mode": STATE.response_mode,
                 "healing_enabled": STATE.healing_enabled,
                 "healing_window_seconds": STATE.healing_window_seconds,
                 "healed_count": len(STATE.healed_events),
+                "watched_count": len(STATE.watched_ips),
+                "shielded_port_count": len(STATE.shielded_ports),
+                "active_decoy_count": len(DECOY_MANAGER.list_active_decoys()),
+                "recent_decoy_event_count": len(DECOY_MANAGER.recent_events(20)),
                 "capture_stats": dict(STATE.capture_stats),
+                "enabled_models": sorted(STATE.enabled_models),
             }
         )
 
@@ -2822,23 +3278,40 @@ def prevention():
     if request.method == "GET":
         maintain_healing()
         with STATE.lock:
-            return jsonify({"enabled": STATE.prevention_enabled, "auto_block_threshold": STATE.auto_block_threshold})
+            return jsonify(
+                {
+                    "enabled": STATE.prevention_enabled,
+                    "auto_block_threshold": STATE.auto_block_threshold,
+                    "response_mode": STATE.response_mode,
+                }
+            )
 
     payload = request.get_json(silent=True) or {}
     enabled = bool(payload.get("enabled", False))
     threshold = str(payload.get("auto_block_threshold", "high")).lower()
+    response_mode = str(payload.get("response_mode", "block_bidirectional")).lower()
     if threshold not in RISK_RANK:
         return jsonify({"error": "Invalid threshold"}), 400
+    if response_mode not in RESPONSE_MODES:
+        return jsonify({"error": "Invalid response mode"}), 400
 
     removed_auto_blocks: list[str] = []
     with STATE.lock:
         was_enabled = STATE.prevention_enabled
         STATE.prevention_enabled = enabled
         STATE.auto_block_threshold = threshold
+        STATE.response_mode = response_mode
     if not enabled and was_enabled:
         removed_auto_blocks = clear_auto_blocks()
     persist_results()
-    return jsonify({"enabled": enabled, "auto_block_threshold": threshold, "removed_auto_blocks": removed_auto_blocks})
+    return jsonify(
+        {
+            "enabled": enabled,
+            "auto_block_threshold": threshold,
+            "response_mode": response_mode,
+            "removed_auto_blocks": removed_auto_blocks,
+        }
+    )
 
 
 @app.route("/healing", methods=["GET", "POST"])
@@ -2923,6 +3396,65 @@ def blocked_ips():
     with STATE.lock:
         values = [{"ip": ip, **metadata} for ip, metadata in STATE.blocked_ips.items()]
     return jsonify({"blocked_ips": to_json_safe(values)})
+
+
+@app.route("/watched_ips")
+def watched_ips():
+    with STATE.lock:
+        values = [{"ip": ip, **metadata} for ip, metadata in STATE.watched_ips.items()]
+    return jsonify({"watched_ips": to_json_safe(values)})
+
+
+@app.route("/shielded_ports")
+def shielded_ports():
+    with STATE.lock:
+        values = list(STATE.shielded_ports.values())
+    return jsonify({"shielded_ports": to_json_safe(values)})
+
+
+@app.route("/decoy_profiles")
+def decoy_profiles():
+    return jsonify({"profiles": to_json_safe(DECOY_MANAGER.available_profiles())})
+
+
+@app.route("/decoys")
+def decoys():
+    return jsonify(
+        {
+            "profiles": to_json_safe(DECOY_MANAGER.available_profiles()),
+            "active_decoys": to_json_safe(DECOY_MANAGER.list_active_decoys()),
+            "recent_events": to_json_safe(DECOY_MANAGER.recent_events(50)),
+        }
+    )
+
+
+@app.route("/deploy_decoy", methods=["POST"])
+def deploy_decoy_route():
+    payload = request.get_json(silent=True) or {}
+    profile_id = str(payload.get("profile_id", "") or "").strip()
+    source_ip = str(payload.get("source_ip", "") or "").strip() or None
+    reason = str(payload.get("reason", "") or "").strip() or None
+    if not profile_id:
+        return jsonify({"error": "Missing decoy profile id"}), 400
+    result = DECOY_MANAGER.deploy_decoy(profile_id, reason=reason, source_ip=source_ip, auto_deployed=False)
+    if result.get("success"):
+        record_defense_action("deploy_decoy_manual", profile_id, result, automatic=False, source_ip=source_ip)
+        persist_results()
+        return jsonify(result)
+    return jsonify(result), 400
+
+
+@app.route("/remove_decoy", methods=["POST"])
+def remove_decoy_route():
+    payload = request.get_json(silent=True) or {}
+    profile_id = str(payload.get("profile_id", "") or "").strip()
+    if not profile_id:
+        return jsonify({"error": "Missing decoy profile id"}), 400
+    result = DECOY_MANAGER.remove_decoy(profile_id)
+    record_defense_action("remove_decoy", profile_id, result, automatic=False)
+    persist_results()
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
 
 
 @app.route("/analysis")
@@ -3015,6 +3547,49 @@ def block_ip():
     return jsonify(result)
 
 
+@app.route("/watch_ip", methods=["POST"])
+def watch_ip():
+    payload = request.get_json(silent=True) or {}
+    try:
+        ip = normalize_ip(payload.get("ip", ""))
+    except Exception:
+        return jsonify({"error": "Invalid IP address"}), 400
+
+    reason = payload.get("reason", "Manual watch from dashboard")
+    entry = normalize_watch_entry(
+        ip,
+        {
+            "reason": reason,
+            "message": "Host added to watchlist for operator follow-up.",
+            "response_method": "watch_only",
+            "status": "watching",
+            "watched_at": now_iso(),
+        },
+    )
+    with STATE.lock:
+        STATE.watched_ips[ip] = entry
+    record_defense_action("watch_ip", ip, entry, automatic=False)
+    persist_results()
+    return jsonify(entry)
+
+
+@app.route("/unwatch_ip", methods=["POST"])
+def unwatch_ip():
+    payload = request.get_json(silent=True) or {}
+    try:
+        ip = normalize_ip(payload.get("ip", ""))
+    except Exception:
+        return jsonify({"error": "Invalid IP address"}), 400
+
+    removed = False
+    with STATE.lock:
+        removed = STATE.watched_ips.pop(ip, None) is not None
+    event = {"success": removed, "message": "Host removed from watchlist." if removed else "Host was not in the watchlist."}
+    record_defense_action("unwatch_ip", ip, event, automatic=False)
+    persist_results()
+    return jsonify({"ip": ip, **event})
+
+
 @app.route("/unblock_ip", methods=["POST"])
 def unblock_ip():
     payload = request.get_json(silent=True) or {}
@@ -3026,6 +3601,40 @@ def unblock_ip():
     result = firewall_unblock_ip(ip)
     with STATE.lock:
         STATE.blocked_ips.pop(ip, None)
+    persist_results()
+    return jsonify(result)
+
+
+@app.route("/shield_port", methods=["POST"])
+def shield_port():
+    payload = request.get_json(silent=True) or {}
+    try:
+        port = int(payload.get("port") or 0)
+    except Exception:
+        return jsonify({"error": "Invalid port"}), 400
+    proto = str(payload.get("proto", "TCP") or "TCP").upper()
+    result = firewall_shield_local_port(port, proto, reason=payload.get("reason", "Manual local service shield from dashboard"))
+    if result.get("success"):
+        with STATE.lock:
+            normalized = normalize_shield_entry(port, proto, result)
+            STATE.shielded_ports[normalized["key"]] = normalized
+    record_defense_action("shield_port", f"{proto}:{port}", result, automatic=False)
+    persist_results()
+    return jsonify(result)
+
+
+@app.route("/unshield_port", methods=["POST"])
+def unshield_port():
+    payload = request.get_json(silent=True) or {}
+    try:
+        port = int(payload.get("port") or 0)
+    except Exception:
+        return jsonify({"error": "Invalid port"}), 400
+    proto = str(payload.get("proto", "TCP") or "TCP").upper()
+    result = firewall_unshield_local_port(port, proto)
+    with STATE.lock:
+        STATE.shielded_ports.pop(shield_key(port, proto), None)
+    record_defense_action("unshield_port", f"{proto}:{port}", result, automatic=False)
     persist_results()
     return jsonify(result)
 

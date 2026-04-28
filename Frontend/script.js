@@ -27,6 +27,21 @@ function stopPcapPolling() {
     activeReplayId = null;
 }
 
+function setDashboardPolling(enabled) {
+    if (enabled) {
+        if (!pollHandle) {
+            pollHandle = window.setInterval(() => {
+                refreshDashboard().catch((err) => setStatus(err.message));
+            }, 3000);
+        }
+        return;
+    }
+    if (pollHandle) {
+        window.clearInterval(pollHandle);
+        pollHandle = null;
+    }
+}
+
 function setStatus(message) {
     el("statusMessage").textContent = message;
     const flash = el("statusFlash");
@@ -43,6 +58,16 @@ function setStatus(message) {
 
 function riskClass(risk) {
     return `risk-${String(risk || "normal").toLowerCase()}`;
+}
+
+function responseModeLabel(mode) {
+    const normalized = String(mode || "").toLowerCase();
+    if (normalized === "watch_only") return "Watchlist Only";
+    if (normalized === "block_inbound") return "Inbound Containment";
+    if (normalized === "block_bidirectional") return "Full Containment";
+    if (normalized === "shield_service_port") return "Shield Local Service Port";
+    if (normalized === "deploy_decoy") return "Adaptive Decoy";
+    return "Full Containment";
 }
 
 function renderDoughnut(chartRef, canvasId, labels, values, title, colors) {
@@ -296,12 +321,82 @@ async function refreshPrevention() {
     const data = await api("/prevention");
     el("preventionToggle").checked = data.enabled;
     el("threshold").value = data.auto_block_threshold;
+    if (el("responseMode")) el("responseMode").value = data.response_mode || "block_bidirectional";
+    if (el("responseModeResponse")) el("responseModeResponse").value = data.response_mode || "block_bidirectional";
 }
 
 async function refreshHealing() {
     const data = await api("/healing");
     el("healingToggle").checked = data.enabled;
     el("healingWindow").value = data.healing_window_seconds;
+}
+
+async function refreshModelSettings() {
+    const data = await api("/model_settings");
+    renderModelSettings(data);
+}
+
+async function loadDecoyCatalog() {
+    const data = await api("/decoys");
+    const select = el("decoyProfile");
+    if (!select) return;
+    const previousValue = select.value;
+    select.innerHTML = "";
+    Object.entries(data.profiles || {}).forEach(([value, spec]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = `${spec.label} (${spec.port})`;
+        option.dataset.description = spec.description || "";
+        select.appendChild(option);
+    });
+    if (previousValue && [...select.options].some((option) => option.value === previousValue)) {
+        select.value = previousValue;
+    }
+    updateDecoyHint();
+}
+
+function updateDecoyHint() {
+    const select = el("decoyProfile");
+    const hint = el("decoyHint");
+    if (!select || !hint) return;
+    const selected = select.selectedOptions[0];
+    hint.textContent = selected?.dataset.description || "Deploy a low-interaction trap service to capture follow-on traffic from suspicious sources.";
+}
+
+function renderModelSettings(data) {
+    const grid = el("modelToggleGrid");
+    const summary = el("activeModelSummary");
+    if (!grid || !summary) return;
+    grid.innerHTML = "";
+    summary.innerHTML = "";
+    const available = data?.available_models || [];
+    const enabled = new Set(data?.enabled_models || []);
+
+    if (!available.length) {
+        grid.innerHTML = `<div class="event-card">No ML models are currently loaded.</div>`;
+        summary.innerHTML = `<div class="event-card compact-card">Model bundle unavailable.</div>`;
+        return;
+    }
+
+    available.forEach((model) => {
+        const card = document.createElement("label");
+        card.className = "comparison-card";
+        card.innerHTML = `
+            <div>${model.label}</div>
+            <strong>${model.loaded ? "Loaded" : "Unavailable"}</strong>
+            <span>${enabled.has(model.key) ? "Contributing to detection" : "Disabled for scoring"}</span>
+            <span><input type="checkbox" class="model-toggle" data-model-key="${model.key}" ${enabled.has(model.key) ? "checked" : ""} ${model.loaded ? "" : "disabled"}> Use this model</span>
+        `;
+        grid.appendChild(card);
+    });
+
+    const activeLabels = available.filter((model) => enabled.has(model.key)).map((model) => model.label);
+    const item = document.createElement("div");
+    item.className = "event-card compact-card";
+    item.textContent = activeLabels.length
+        ? `Active models: ${activeLabels.join(", ")}.`
+        : "No active models selected.";
+    summary.appendChild(item);
 }
 
 function renderResults(results, blockedItems = []) {
@@ -491,7 +586,7 @@ function renderBlocked(items) {
                 </div>
                 <div>${item.message || item.reason || "Firewall rule present."}</div>
                 <div class="helper">${item.reason || "No reason provided"}</div>
-                <div class="helper">Status: ${status} | Source: ${source}</div>
+                <div class="helper">Status: ${status} | Source: ${source} | Method: ${responseModeLabel(item.response_method)}</div>
                 <div class="helper">${recovery}</div>
             `;
             target.appendChild(card);
@@ -500,6 +595,107 @@ function renderBlocked(items) {
 
     renderInto(host);
     renderInto(overviewHost);
+}
+
+function renderWatched(items) {
+    const host = el("watchedList");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!items?.length) {
+        host.innerHTML = `<div class="event-card">No watched hosts right now.</div>`;
+        return;
+    }
+
+    items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        card.innerHTML = `
+            <div class="card-head">
+                <strong class="mono">${item.ip}</strong>
+                <button class="action-btn unblock" data-ip="${item.ip}" data-action="unwatch">Remove</button>
+            </div>
+            <div>${item.message || item.reason || "Host is on the watchlist."}</div>
+            <div class="helper">Method: ${responseModeLabel(item.response_method)} | Status: ${item.status || "watching"}</div>
+            <div class="helper mono">${String(item.watched_at || "").replace("T", " ").slice(0, 19)}</div>
+        `;
+        host.appendChild(card);
+    });
+}
+
+function renderShieldedPorts(items) {
+    const host = el("shieldedPortsList");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!items?.length) {
+        host.innerHTML = `<div class="event-card">No local service ports are shielded.</div>`;
+        return;
+    }
+
+    items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        card.innerHTML = `
+            <div class="card-head">
+                <strong class="mono">${item.proto || "TCP"}:${item.port}</strong>
+                <button class="action-btn unblock" data-port="${item.port}" data-proto="${item.proto || "TCP"}" data-action="unshield">Remove</button>
+            </div>
+            <div>${item.message || item.reason || "Inbound service traffic is currently blocked."}</div>
+            <div class="helper">Method: ${responseModeLabel(item.response_method)} | Status: ${item.status || "active"}</div>
+            <div class="helper mono">${String(item.shielded_at || "").replace("T", " ").slice(0, 19)}</div>
+        `;
+        host.appendChild(card);
+    });
+}
+
+function renderActiveDecoys(items) {
+    const host = el("activeDecoysList");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!items?.length) {
+        host.innerHTML = `<div class="event-card">No decoy listeners are active right now.</div>`;
+        return;
+    }
+
+    items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        const sourceText = (item.source_ips || []).length ? (item.source_ips || []).join(", ") : "No source pinned yet";
+        card.innerHTML = `
+            <div class="card-head">
+                <strong>${item.label || item.profile_id}</strong>
+                <button class="action-btn unblock" data-decoy-remove="${item.profile_id}">Remove</button>
+            </div>
+            <div class="helper mono">${item.listener_host || "0.0.0.0"}:${item.listener_port || "n/a"} | ${item.response_kind || "tcp"}</div>
+            <div>${item.reason || item.description || "Trap service is active."}</div>
+            <div class="helper">Events: ${item.event_count || 0} | Sources: ${sourceText}</div>
+        `;
+        host.appendChild(card);
+    });
+}
+
+function renderDecoyEvents(items) {
+    const host = el("decoyEventsList");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!items?.length) {
+        host.innerHTML = `<div class="event-card">No decoy interactions captured yet.</div>`;
+        return;
+    }
+
+    items.slice(0, 12).forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        const preview = item.payload_preview ? ` | Payload: ${item.payload_preview}` : "";
+        card.innerHTML = `
+            <div class="card-head">
+                <strong>${item.label || item.profile_id || "Decoy"}</strong>
+                <span class="helper mono">${item.source_ip || "unknown"}:${item.source_port || ""}</span>
+            </div>
+            <div class="helper mono">${item.listener_host || "0.0.0.0"}:${item.listener_port || "n/a"}${preview}</div>
+            <div class="helper mono">${String(item.timestamp || "").replace("T", " ").slice(0, 19)}</div>
+        `;
+        host.appendChild(card);
+    });
 }
 
 function renderHealingQueue(items) {
@@ -651,7 +847,7 @@ function renderDefenseSnapshot(status, analysis) {
         `Posture: ${high > 0 ? "high-risk activity observed" : medium > 0 ? "elevated review posture" : "baseline traffic posture"}.`,
         `Capture volume: ${stats.packets_total || 0} packets observed, including ${stats.proto_TCP || 0} TCP and ${stats.proto_ICMP || 0} ICMP packets.`,
         `Live authority order: heuristics, Random Forest, and Gradient Boosted Tree; assist layers remain advisory only.`,
-        `Operational state: ${analysis.alerts_count || 0} alerts, ${analysis.blocked_count || 0} blocked IPs, ${(analysis.healing_history || []).length} healing actions, ${(analysis.attack_runs || []).length} recorded test runs.`,
+        `Operational state: ${analysis.alerts_count || 0} alerts, ${analysis.blocked_count || 0} blocked IPs, ${analysis.watched_count || 0} watched hosts, ${analysis.shielded_port_count || 0} shielded ports, ${(analysis.attack_runs || []).length} recorded test runs.`,
     ];
     items.forEach((text) => {
         const card = document.createElement("div");
@@ -669,8 +865,9 @@ function renderDefenseDoctrine(status, analysis) {
         "Mission: reduce operator noise by combining layered anomaly detectors with verification models and explicit prevention policy.",
         "Core product alignment: the anomaly stack is Autoencoder, Isolation Forest, and K-Means, matching the prototype review.",
         "Production live alerts: RF and GBDT decide severity; heuristics raise explicit ICMP, TCP probe, SYN burst, and UDP flood events.",
-        `Prevention posture: ${status.prevention_enabled ? "automatic blocking is armed" : "blocking remains manual"} with threshold set to ${status.auto_block_threshold || "high"}.`,
+        `Prevention posture: ${status.prevention_enabled ? "automatic response is armed" : "response remains manual"} with threshold set to ${status.auto_block_threshold || "high"} and method ${responseModeLabel(status.response_mode)}.`,
         `Healing posture: ${status.healing_enabled ? `automatic recovery is active after ${status.healing_window_seconds || 180} seconds` : "recovery remains manual until healing is re-enabled"}.`,
+        `Decoy posture: ${(analysis.active_decoy_count || 0)} decoy services online with ${(analysis.recent_decoy_event_count || 0)} recent trap hits.`,
         `Research visibility: PPO and GNN remain in the console for deeper context, but they do not overrule live authority.`,
     ];
     items.forEach((text) => {
@@ -796,8 +993,8 @@ function renderPcapRuns(runs) {
     ];
     if (latestProfile === "attack") {
         summaryItems.push(
-            ["Attack Pairs", latest.total_pair_count || 0],
-            ["Correctly Detected", latest.elevated_pair_count || 0],
+            ["Attack Pairs", latest.benchmark_attack_pair_count || latest.total_pair_count || 0],
+            ["Correctly Detected", latest.correctly_detected_pairs || latest.elevated_pair_count || 0],
             ["Correctly Detected %", `${Number(latest.benchmark_score_pct || 0).toFixed(1)}%`],
         );
     } else {
@@ -845,7 +1042,7 @@ function renderPcapRuns(runs) {
             <td>${runStatus === "running" ? `${run.sent_packet_count || 0}/${run.packet_count || 0}` : (run.packet_count || 0)}</td>
             <td>${run.total_flow_count || run.matched_flows || 0}</td>
             <td>${run.total_pair_count || 0}</td>
-            <td>${runStatus === "running" ? "Processing..." : (isAttack ? (run.elevated_pair_count || 0) : (run.elevated_pair_count || 0))}</td>
+            <td>${runStatus === "running" ? "Processing..." : (isAttack ? (run.correctly_detected_pairs || run.elevated_pair_count || 0) : (run.elevated_pair_count || 0))}</td>
         `;
         historyBody.appendChild(tr);
     });
@@ -871,8 +1068,8 @@ function renderPcapRuns(runs) {
             <td>${run.pcap_name || "unknown"}</td>
             <td>${runStatus === "running" ? `${run.sent_packet_count || 0}/${run.packet_count || 0}` : (run.packet_count || 0)}</td>
             <td>${run.total_flow_count || run.matched_flows || 0}</td>
-            <td>${run.total_pair_count || 0}</td>
-            <td>${runStatus === "running" ? "Processing..." : (run.elevated_pair_count || 0)}</td>
+            <td>${run.benchmark_attack_pair_count || run.total_pair_count || 0}</td>
+            <td>${runStatus === "running" ? "Processing..." : (run.correctly_detected_pairs || run.elevated_pair_count || 0)}</td>
             <td>${scoreLabel}</td>
             `;
         tbody.appendChild(tr);
@@ -970,6 +1167,8 @@ async function refreshDashboard() {
         api("/blocked_ips"),
     ]);
 
+    setDashboardPolling(Boolean(status.capturing));
+
     el("startBtn").disabled = status.capturing;
     el("stopBtn").disabled = !status.capturing;
     if (status.selected_iface && (!el("iface").value || status.capturing)) {
@@ -977,6 +1176,8 @@ async function refreshDashboard() {
     }
     el("preventionToggle").checked = Boolean(status.prevention_enabled);
     el("threshold").value = status.auto_block_threshold || "high";
+    if (el("responseMode")) el("responseMode").value = status.response_mode || "block_bidirectional";
+    if (el("responseModeResponse")) el("responseModeResponse").value = status.response_mode || "block_bidirectional";
     el("healingToggle").checked = Boolean(status.healing_enabled);
     el("healingWindow").value = status.healing_window_seconds || 180;
     syncAttackTargetFromInterface();
@@ -985,6 +1186,7 @@ async function refreshDashboard() {
     el("blockedCount").textContent = analysis.blocked_count || 0;
     el("anomalyCount").textContent = analysis.ae_anomalies?.count || 0;
     el("agreementPct").textContent = `${(analysis.model_agreement?.pct || 0).toFixed(1)}%`;
+    if (el("activeDecoysCount")) el("activeDecoysCount").textContent = analysis.active_decoy_count || 0;
     el("avgPps").textContent = analysis.feature_highlights?.avg_packets_per_sec || 0;
     el("avgBps").textContent = analysis.feature_highlights?.avg_bytes_per_sec || 0;
     el("synBurstFlows").textContent = analysis.feature_highlights?.syn_burst_flows || 0;
@@ -1044,6 +1246,10 @@ async function refreshDashboard() {
     renderDefenseSnapshot(status, analysis);
     renderAlerts(alerts.alerts || [], blocked.blocked_ips || []);
     renderBlocked(blocked.blocked_ips || []);
+    renderWatched(analysis.watched_ips || []);
+    renderShieldedPorts(analysis.shielded_ports || []);
+    renderActiveDecoys(analysis.active_decoys || []);
+    renderDecoyEvents(analysis.recent_decoy_events || []);
     renderComparison(analysis.model_comparison || {});
     renderModelMatrix(analysis.model_matrix || {});
     renderModelNarrative(analysis);
@@ -1053,6 +1259,7 @@ async function refreshDashboard() {
     renderHealingHistory(analysis.healing_history || []);
     renderAttackRuns(analysis.attack_runs || []);
     renderPcapRuns(analysis.pcap_runs || []);
+    renderModelSettings(analysis.model_settings || {});
     renderTopTalkers(analysis.top_talkers || []);
     renderFeatureHighlights(analysis.feature_highlights || {});
     renderOpsChecklist(analysis);
@@ -1093,13 +1300,16 @@ async function clearPcapReplays() {
 async function savePrevention() {
     const enabled = el("preventionToggle").checked;
     const autoBlockThreshold = el("threshold").value;
+    const responseMode = el("responseModeResponse")?.value || el("responseMode")?.value || "block_bidirectional";
     const data = await api("/prevention", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, auto_block_threshold: autoBlockThreshold }),
+        body: JSON.stringify({ enabled, auto_block_threshold: autoBlockThreshold, response_mode: responseMode }),
     });
     const removalNote = data.removed_auto_blocks?.length ? ` Cleared ${data.removed_auto_blocks.length} auto-blocked host(s).` : "";
-    setStatus(`Prevention ${enabled ? "enabled" : "disabled"} at ${autoBlockThreshold} threshold.${removalNote}`);
+    if (el("responseMode")) el("responseMode").value = responseMode;
+    if (el("responseModeResponse")) el("responseModeResponse").value = responseMode;
+    setStatus(`Prevention ${enabled ? "enabled" : "disabled"} at ${autoBlockThreshold} threshold using ${responseModeLabel(responseMode)}.${removalNote}`);
     await refreshDashboard();
 }
 
@@ -1112,6 +1322,43 @@ async function saveHealing() {
         body: JSON.stringify({ enabled, healing_window_seconds: healingWindowSeconds }),
     });
     setStatus(`Healing ${enabled ? "enabled" : "disabled"} with a ${healingWindowSeconds}s recovery window.`);
+    await refreshDashboard();
+}
+
+async function saveModelSettings() {
+    const enabledModels = [...document.querySelectorAll(".model-toggle:checked")].map((node) => node.dataset.modelKey).filter(Boolean);
+    const data = await api("/model_settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled_models: enabledModels }),
+    });
+    renderModelSettings(data);
+    setStatus(`Active model stack updated: ${(data.enabled_models || []).join(", ") || "none"}.`);
+    await refreshDashboard();
+}
+
+async function deployDecoy() {
+    const profileId = el("decoyProfile")?.value;
+    if (!profileId) {
+        setStatus("Choose a decoy profile first.");
+        return;
+    }
+    const data = await api("/deploy_decoy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: profileId, reason: "Operator deployed decoy from dashboard" }),
+    });
+    setStatus(data.message || `Decoy ${profileId} deployed.`);
+    await refreshDashboard();
+}
+
+async function removeDecoy(profileId) {
+    const data = await api("/remove_decoy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: profileId }),
+    });
+    setStatus(data.message || `Decoy ${profileId} removed.`);
     await refreshDashboard();
 }
 
@@ -1202,13 +1449,32 @@ async function replayPcap() {
 }
 
 async function blockOrUnblock(ip, action) {
-    const path = action === "heal" ? "/heal_ip" : action === "unblock" ? "/unblock_ip" : "/block_ip";
+    const path = action === "heal"
+        ? "/heal_ip"
+        : action === "unblock"
+            ? "/unblock_ip"
+            : action === "watch"
+                ? "/watch_ip"
+                : action === "unwatch"
+                    ? "/unwatch_ip"
+                    : "/block_ip";
     const data = await api(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ip, reason: "Dashboard operator action" }),
     });
     setStatus(data.message || `${action} completed for ${ip}.`);
+    await refreshDashboard();
+}
+
+async function shieldOrUnshield(port, proto, action) {
+    const path = action === "unshield" ? "/unshield_port" : "/shield_port";
+    const data = await api(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ port, proto, reason: "Dashboard operator action" }),
+    });
+    setStatus(data.message || `${action} completed for ${proto}:${port}.`);
     await refreshDashboard();
 }
 
@@ -1219,12 +1485,21 @@ function bindEvents() {
     el("clearPcapRunsBtn").addEventListener("click", () => clearPcapReplays().catch((err) => setStatus(err.message)));
     el("savePreventionBtn").addEventListener("click", () => savePrevention().catch((err) => setStatus(err.message)));
     el("saveHealingBtn").addEventListener("click", () => saveHealing().catch((err) => setStatus(err.message)));
+    el("saveModelSettingsBtn")?.addEventListener("click", () => saveModelSettings().catch((err) => setStatus(err.message)));
+    el("deployDecoyBtn")?.addEventListener("click", () => deployDecoy().catch((err) => setStatus(err.message)));
     el("simulateBtn").addEventListener("click", () => runAttack().catch((err) => setStatus(err.message)));
     el("uploadPcapBtn").addEventListener("click", () => uploadPcap().catch((err) => setStatus(err.message)));
     el("replayPcapBtn").addEventListener("click", () => replayPcap().catch((err) => setStatus(err.message)));
     el("attackType").addEventListener("change", updateAttackHint);
     el("pcapFile").addEventListener("change", updatePcapHint);
     el("pcapSendPackets").addEventListener("change", updatePcapHint);
+    el("decoyProfile")?.addEventListener("change", updateDecoyHint);
+    el("responseMode")?.addEventListener("change", () => {
+        if (el("responseModeResponse")) el("responseModeResponse").value = el("responseMode").value;
+    });
+    el("responseModeResponse")?.addEventListener("change", () => {
+        if (el("responseMode")) el("responseMode").value = el("responseModeResponse").value;
+    });
     el("iface").addEventListener("change", () => {
         syncAttackTargetFromInterface(true);
         updatePcapHint();
@@ -1247,6 +1522,14 @@ function bindEvents() {
             blockOrUnblock(target.dataset.ip, target.dataset.action).catch((err) => setStatus(err.message));
             return;
         }
+        if (target.dataset.action && target.dataset.port) {
+            shieldOrUnshield(Number(target.dataset.port), target.dataset.proto || "TCP", target.dataset.action).catch((err) => setStatus(err.message));
+            return;
+        }
+        if (target.dataset.decoyRemove) {
+            removeDecoy(target.dataset.decoyRemove).catch((err) => setStatus(err.message));
+            return;
+        }
         if (target.dataset.shortcut === "export-alerts") {
             window.location.href = "/export_csv?filter=alerts";
         } else if (target.dataset.shortcut === "export-high") {
@@ -1259,16 +1542,13 @@ function bindEvents() {
 
 async function boot() {
     bindEvents();
-    await Promise.all([loadInterfaces(), loadAttackCatalog(), loadPcapCatalog(), refreshPrevention(), refreshHealing()]);
+    await Promise.all([loadInterfaces(), loadAttackCatalog(), loadPcapCatalog(), refreshPrevention(), refreshHealing(), refreshModelSettings(), loadDecoyCatalog()]);
     await refreshDashboard();
-    pollHandle = window.setInterval(() => {
-        refreshDashboard().catch((err) => setStatus(err.message));
-    }, 3000);
 }
 
 window.addEventListener("beforeunload", () => {
     stopPcapPolling();
-    if (pollHandle) window.clearInterval(pollHandle);
+    setDashboardPolling(false);
 });
 
 window.addEventListener("load", () => {

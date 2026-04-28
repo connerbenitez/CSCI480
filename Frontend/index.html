@@ -36,6 +36,7 @@
         <nav class="tab-bar" id="tabBar">
             <button class="tab-btn active" data-tab="overview" type="button">Overview</button>
             <button class="tab-btn" data-tab="models" type="button">Layered Engine</button>
+            <button class="tab-btn" data-tab="modelsettings" type="button">Model Controls</button>
             <button class="tab-btn" data-tab="network" type="button">Network Intel</button>
             <button class="tab-btn" data-tab="pcap" type="button">PCAP Replay</button>
             <button class="tab-btn" data-tab="response" type="button">Defense & Prevention</button>
@@ -75,6 +76,16 @@
                                 <option value="low">Low and above</option>
                             </select>
                         </div>
+                        <div class="field-row">
+                            <label for="responseMode">Automatic response method</label>
+                            <select id="responseMode">
+                                <option value="watch_only">Watchlist Only</option>
+                                <option value="block_inbound">Inbound Containment</option>
+                                <option value="block_bidirectional">Full Containment</option>
+                                <option value="shield_service_port">Shield Local Service Port</option>
+                                <option value="deploy_decoy">Adaptive Decoy</option>
+                            </select>
+                        </div>
                         <button id="savePreventionBtn" class="secondary" type="button">Save Prevention Settings</button>
                     </article>
 
@@ -111,6 +122,7 @@
                     <article class="metric"><span>Blocked IPs</span><strong id="blockedCount">0</strong></article>
                     <article class="metric"><span>AE Anomalies</span><strong id="anomalyCount">0</strong></article>
                     <article class="metric"><span>Model Agreement</span><strong id="agreementPct">0%</strong></article>
+                    <article class="metric"><span>Active Decoys</span><strong id="activeDecoysCount">0</strong></article>
                     <article class="metric"><span>Avg Packets / sec</span><strong id="avgPps">0</strong></article>
                     <article class="metric"><span>Avg Bytes / sec</span><strong id="avgBps">0</strong></article>
                     <article class="metric"><span>SYN Burst Flows</span><strong id="synBurstFlows">0</strong></article>
@@ -280,6 +292,29 @@
                 </section>
             </section>
 
+            <section class="tab-panel" data-panel="modelsettings">
+                <section class="dashboard-grid model-grid">
+                    <article class="card wide-card">
+                        <div class="card-head">
+                            <h2>Active Model Selection</h2>
+                            <span>Choose exactly which loaded detectors contribute to live and replay scoring</span>
+                        </div>
+                        <div class="comparison-grid comparison-grid-wide" id="modelToggleGrid"></div>
+                        <div class="button-row" style="margin-top: 1rem;">
+                            <button id="saveModelSettingsBtn" class="secondary" type="button">Save Active Models</button>
+                        </div>
+                        <p class="helper" id="modelSelectionHint">Unchecked models stay loaded on disk, but they stop contributing to live and PCAP detection.</p>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Active Stack Summary</h2>
+                            <span>What the IDS is currently trusting</span>
+                        </div>
+                        <div class="event-list dense-list" id="activeModelSummary"></div>
+                    </article>
+                </section>
+            </section>
+
             <section class="tab-panel" data-panel="network">
                 <section class="dashboard-grid network-grid">
                     <article class="card chart-card">
@@ -441,6 +476,23 @@
                     </article>
                     <article class="card">
                         <div class="card-head">
+                            <h2>Response Methods</h2>
+                            <span>Choose what automatic prevention actually does</span>
+                        </div>
+                        <div class="field-row">
+                            <label for="responseModeResponse">Automatic response method</label>
+                            <select id="responseModeResponse">
+                                <option value="watch_only">Watchlist Only</option>
+                                <option value="block_inbound">Inbound Containment</option>
+                                <option value="block_bidirectional">Full Containment</option>
+                                <option value="shield_service_port">Shield Local Service Port</option>
+                                <option value="deploy_decoy">Adaptive Decoy</option>
+                            </select>
+                        </div>
+                        <p class="helper">Watchlist keeps tracking the host, inbound containment drops incoming traffic only, full containment blocks both directions, service-port shielding closes the local destination port, and adaptive decoy deploys a trap service to capture follow-on activity.</p>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
                             <h2>Defense Doctrine</h2>
                             <span>What drives live decisions right now</span>
                         </div>
@@ -471,6 +523,48 @@
                             <span>Firewall and dashboard state</span>
                         </div>
                         <div class="event-list" id="blockedList"></div>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Watched Hosts</h2>
+                            <span>Hosts being monitored without immediate containment</span>
+                        </div>
+                        <div class="event-list" id="watchedList"></div>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Shielded Ports</h2>
+                            <span>Local service ports currently wrapped in firewall protection</span>
+                        </div>
+                        <div class="event-list" id="shieldedPortsList"></div>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Decoy Services</h2>
+                            <span>Deploy and monitor trap services for suspicious probing</span>
+                        </div>
+                        <div class="field-row">
+                            <label for="decoyProfile">Decoy profile</label>
+                            <select id="decoyProfile"></select>
+                        </div>
+                        <div class="button-row">
+                            <button id="deployDecoyBtn" class="secondary" type="button">Deploy Decoy</button>
+                        </div>
+                        <p class="helper" id="decoyHint">Deploy a low-interaction trap service to capture follow-on traffic from suspicious sources.</p>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Active Decoys</h2>
+                            <span>Trap listeners currently online</span>
+                        </div>
+                        <div class="event-list" id="activeDecoysList"></div>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
+                            <h2>Recent Decoy Hits</h2>
+                            <span>Real connections captured by deployed decoys</span>
+                        </div>
+                        <div class="event-list" id="decoyEventsList"></div>
                     </article>
                     <article class="card">
                         <div class="card-head">

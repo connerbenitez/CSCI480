@@ -110,7 +110,6 @@ def preprocess_flows(df):
 def load_models():
     """Load all models and preprocessors. Returns dict. Called once."""
     models = {}
-    enable_ae = str(os.environ.get("CSCI480_ENABLE_AE", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
     training_report = {}
     report_path = ml_dir / "training_report.json"
     if report_path.exists():
@@ -180,22 +179,21 @@ def load_models():
     if not models:
         raise RuntimeError("; ".join(core_errors) if core_errors else "No ML models could be loaded")
 
-    if enable_ae:
+    ae_dir = ml_dir / 'AutoEncoderDumps'
+    if artifact_path(ae_dir, 'autoencoder_model.pkl').exists():
         optional_ae = load_optional(load_ae, 'autoencoder bundle')
         if optional_ae:
             models['ae'] = optional_ae
 
     # Optional models should not prevent the core bundle from starting.
-    iso_metrics = training_report.get("isolation_forest", {}) if isinstance(training_report, dict) else {}
     iso_dir = ml_dir / 'IsoDumps'
-    if artifact_path(iso_dir, 'iso_forest_model.pkl').exists() and not iso_metrics.get("skipped") and float(iso_metrics.get("roc_auc", 0.0) or 0.0) >= 0.6:
+    if artifact_path(iso_dir, 'iso_forest_model.pkl').exists():
         optional_iso = load_optional(load_iso, 'isolation forest bundle')
         if optional_iso:
             models['iso'] = optional_iso
 
-    kmeans_metrics = training_report.get("kmeans", {}) if isinstance(training_report, dict) else {}
     k_dir = ml_dir / 'KmeansDumps'
-    if artifact_path(k_dir, 'kmeans_model.pkl').exists() and not kmeans_metrics.get("skipped") and float(kmeans_metrics.get("roc_auc", 0.0) or 0.0) >= 0.7:
+    if artifact_path(k_dir, 'kmeans_model.pkl').exists():
         optional_kmeans = load_optional(load_kmeans, 'kmeans bundle')
         if optional_kmeans:
             models['kmeans'] = optional_kmeans
@@ -494,12 +492,16 @@ def _pick_row_value(value, idx, size):
     return value
 
 
-def predict_all(models, flows_df):
+def predict_all(models, flows_df, enabled_models=None):
     """Main entry: df -> predictions dict/list."""
     df_clean = preprocess_flows(flows_df)
     row_count = len(df_clean)
     if row_count == 0:
         return []
+
+    if enabled_models is not None:
+        enabled_set = {str(name) for name in enabled_models}
+        models = {key: value for key, value in models.items() if key in enabled_set}
 
     batch_preds = {}
     numeric_features = df_clean.select_dtypes(include=np.number).columns

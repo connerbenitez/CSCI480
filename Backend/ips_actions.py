@@ -42,6 +42,16 @@ def build_rule_names(ip: str) -> tuple[str, str]:
     return f"CSCI480-IPS-IN-{safe_ip}", f"CSCI480-IPS-OUT-{safe_ip}"
 
 
+def build_inbound_rule_name(ip: str) -> str:
+    safe_ip = ip.replace(":", "_").replace(".", "_")
+    return f"CSCI480-IPS-IN-ONLY-{safe_ip}"
+
+
+def build_shield_rule_name(port: int, proto: str = "TCP") -> str:
+    safe_proto = str(proto or "TCP").upper()
+    return f"CSCI480-IPS-SHIELD-{safe_proto}-{int(port)}"
+
+
 def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, check=False)
 
@@ -94,6 +104,7 @@ def block_ip(ip: str, reason: str) -> dict:
         "success": success,
         "applied": success,
         "ip": normalized,
+        "response_method": "block_bidirectional",
         "reason": reason,
         "message": message,
         "platform": platform.system(),
@@ -105,12 +116,14 @@ def block_ip(ip: str, reason: str) -> dict:
 def unblock_ip(ip: str) -> dict:
     normalized = normalize_ip(ip)
     inbound_rule, outbound_rule = build_rule_names(normalized)
+    inbound_only_rule = build_inbound_rule_name(normalized)
     system = platform.system().lower()
 
     if system == "windows":
         commands = [
             ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={inbound_rule}"],
             ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={outbound_rule}"],
+            ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={inbound_only_rule}"],
         ]
     else:
         commands = [
@@ -138,8 +151,186 @@ def unblock_ip(ip: str) -> dict:
         "success": success,
         "applied": False,
         "ip": normalized,
+        "response_method": "unblock",
         "message": message,
         "platform": platform.system(),
         "commands": outputs,
         "unblocked_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def block_ip_inbound(ip: str, reason: str) -> dict:
+    normalized = normalize_ip(ip)
+    allowed, message = is_safe_to_block(normalized)
+    if not allowed:
+        return {
+            "success": False,
+            "ip": normalized,
+            "reason": reason,
+            "message": message,
+            "platform": platform.system(),
+            "blocked_at": None,
+            "commands": [],
+        }
+
+    inbound_rule = build_inbound_rule_name(normalized)
+    system = platform.system().lower()
+
+    if system == "windows":
+        commands = [
+            ["netsh", "advfirewall", "firewall", "add", "rule", f"name={inbound_rule}", "dir=in", "action=block", f"remoteip={normalized}"],
+        ]
+    else:
+        commands = [
+            ["iptables", "-I", "INPUT", "-s", normalized, "-j", "DROP"],
+        ]
+
+    outputs = []
+    success = True
+    for command in commands:
+        result = _run_command(command)
+        outputs.append(
+            {
+                "command": command,
+                "returncode": result.returncode,
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip(),
+            }
+        )
+        if result.returncode != 0:
+            success = False
+
+    message = "Inbound firewall rule created." if success else "Firewall command failed. Run the app with elevated privileges."
+    return {
+        "success": success,
+        "applied": success,
+        "ip": normalized,
+        "response_method": "block_inbound",
+        "reason": reason,
+        "message": message,
+        "platform": platform.system(),
+        "blocked_at": datetime.utcnow().isoformat() + "Z",
+        "commands": outputs,
+    }
+
+
+def shield_local_port(port: int, proto: str = "TCP", reason: str = "Shielded local service port") -> dict:
+    normalized_proto = str(proto or "TCP").upper()
+    if normalized_proto not in {"TCP", "UDP"}:
+        return {
+            "success": False,
+            "port": int(port),
+            "proto": normalized_proto,
+            "reason": reason,
+            "message": "Only TCP and UDP service-port shielding are supported.",
+            "commands": [],
+            "shielded_at": None,
+        }
+
+    local_port = int(port)
+    if local_port <= 0 or local_port > 65535:
+        return {
+            "success": False,
+            "port": local_port,
+            "proto": normalized_proto,
+            "reason": reason,
+            "message": "Invalid local service port.",
+            "commands": [],
+            "shielded_at": None,
+        }
+
+    rule_name = build_shield_rule_name(local_port, normalized_proto)
+    system = platform.system().lower()
+
+    if system == "windows":
+        commands = [
+            [
+                "netsh",
+                "advfirewall",
+                "firewall",
+                "add",
+                "rule",
+                f"name={rule_name}",
+                "dir=in",
+                "action=block",
+                f"protocol={normalized_proto}",
+                f"localport={local_port}",
+            ],
+        ]
+    else:
+        commands = [
+            ["iptables", "-I", "INPUT", "-p", normalized_proto.lower(), "--dport", str(local_port), "-j", "DROP"],
+        ]
+
+    outputs = []
+    success = True
+    for command in commands:
+        result = _run_command(command)
+        outputs.append(
+            {
+                "command": command,
+                "returncode": result.returncode,
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip(),
+            }
+        )
+        if result.returncode != 0:
+            success = False
+
+    message = "Local service port shield enabled." if success else "Firewall command failed. Run the app with elevated privileges."
+    return {
+        "success": success,
+        "applied": success,
+        "response_method": "shield_service_port",
+        "port": local_port,
+        "proto": normalized_proto,
+        "reason": reason,
+        "message": message,
+        "platform": platform.system(),
+        "shielded_at": datetime.utcnow().isoformat() + "Z",
+        "commands": outputs,
+    }
+
+
+def unshield_local_port(port: int, proto: str = "TCP") -> dict:
+    normalized_proto = str(proto or "TCP").upper()
+    local_port = int(port)
+    rule_name = build_shield_rule_name(local_port, normalized_proto)
+    system = platform.system().lower()
+
+    if system == "windows":
+        commands = [
+            ["netsh", "advfirewall", "firewall", "delete", "rule", f"name={rule_name}"],
+        ]
+    else:
+        commands = [
+            ["iptables", "-D", "INPUT", "-p", normalized_proto.lower(), "--dport", str(local_port), "-j", "DROP"],
+        ]
+
+    outputs = []
+    success = True
+    for command in commands:
+        result = _run_command(command)
+        outputs.append(
+            {
+                "command": command,
+                "returncode": result.returncode,
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip(),
+            }
+        )
+        if result.returncode != 0:
+            success = False
+
+    message = "Local service port shield removed." if success else "Failed to remove one or more shield rules."
+    return {
+        "success": success,
+        "applied": False,
+        "response_method": "unshield_service_port",
+        "port": local_port,
+        "proto": normalized_proto,
+        "message": message,
+        "platform": platform.system(),
+        "commands": outputs,
+        "unshielded_at": datetime.utcnow().isoformat() + "Z",
     }
