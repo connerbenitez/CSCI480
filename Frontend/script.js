@@ -4,6 +4,8 @@ let timelineChart;
 let protocolChart;
 let pollHandle;
 let statusFlashTimer;
+let pcapPollHandle;
+let activeReplayId = null;
 const interfaceDetails = new Map();
 
 const el = (id) => document.getElementById(id);
@@ -15,6 +17,14 @@ async function api(path, options = {}) {
         throw new Error(data.error || data.message || "Request failed");
     }
     return data;
+}
+
+function stopPcapPolling() {
+    if (pcapPollHandle) {
+        window.clearInterval(pcapPollHandle);
+        pcapPollHandle = null;
+    }
+    activeReplayId = null;
 }
 
 function setStatus(message) {
@@ -136,16 +146,39 @@ async function loadAttackCatalog() {
 async function loadPcapCatalog() {
     const data = await api("/pcap_catalog");
     const select = el("pcapFile");
+    const previousValue = select.value;
     select.innerHTML = "";
 
-    (data.pcaps || []).forEach((pcap) => {
+    const profileRank = { attack: 0, mixed: 1, baseline: 2, unknown: 3 };
+    const profileLabel = (profile) => {
+        const normalized = String(profile || "").toLowerCase();
+        if (normalized === "attack") return "Attack";
+        if (normalized === "mixed") return "Mixed";
+        if (normalized === "baseline") return "Baseline";
+        return "General";
+    };
+
+    const pcaps = [...(data.pcaps || [])].sort((a, b) => {
+        const rankA = profileRank[String(a.benchmark_profile || "unknown").toLowerCase()] ?? 99;
+        const rankB = profileRank[String(b.benchmark_profile || "unknown").toLowerCase()] ?? 99;
+        if (rankA !== rankB) return rankA - rankB;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+
+    pcaps.forEach((pcap) => {
         const option = document.createElement("option");
         option.value = pcap.name;
         const sizeMb = pcap.size_bytes ? ` (${(pcap.size_bytes / (1024 * 1024)).toFixed(2)} MB)` : "";
-        option.textContent = `${pcap.name}${sizeMb}`;
+        const profileText = profileLabel(pcap.benchmark_profile);
+        option.textContent = `${pcap.name}${sizeMb} - ${profileText}`;
         option.dataset.sizeBytes = pcap.size_bytes || 0;
+        option.dataset.profile = String(pcap.benchmark_profile || "").toLowerCase();
         select.appendChild(option);
     });
+
+    if (previousValue && [...select.options].some((option) => option.value === previousValue)) {
+        select.value = previousValue;
+    }
 
     updatePcapHint();
 }
@@ -222,11 +255,29 @@ function syncAttackTargetFromInterface(force = false) {
 function updatePcapHint() {
     const selected = el("pcapFile").selectedOptions[0];
     const iface = el("iface").value || "selected interface";
+    const wireReplay = Boolean(el("pcapSendPackets")?.checked);
     if (!selected) {
         el("pcapHint").textContent = "No PCAP files found in the test-kit folder.";
         return;
     }
-    el("pcapHint").textContent = `Replay ${selected.value} on ${iface} and score the replayed packets directly in the IDS.`;
+    const profile = String(selected.dataset.profile || "").toLowerCase();
+    if (wireReplay) {
+        el("pcapHint").textContent = `Replay ${selected.value} on ${iface} and score the packets in the IDS. This is slower because it also sends traffic on the network.`;
+        return;
+    }
+    if (profile === "attack") {
+        el("pcapHint").textContent = `Analyze ${selected.value} in the IDS using the same scoring path as live capture. Because this is an attack-profile PCAP, it will appear in the Correctly Detected table.`;
+        return;
+    }
+    if (profile === "baseline") {
+        el("pcapHint").textContent = `Analyze ${selected.value} in the IDS using the same scoring path as live capture. Replay status will still show above, but this file is baseline traffic so it will not count toward Correctly Detected.`;
+        return;
+    }
+    if (profile === "mixed") {
+        el("pcapHint").textContent = `Analyze ${selected.value} in the IDS using the same scoring path as live capture. Replay status will still show above, but this mixed-traffic file will not count toward Correctly Detected.`;
+        return;
+    }
+    el("pcapHint").textContent = `Analyze ${selected.value} in the IDS using the same scoring path as live capture, without waiting on full packet transmission.`;
 }
 
 async function refreshHealth() {
@@ -700,33 +751,62 @@ function renderAttackRuns(runs) {
 
 function renderPcapRuns(runs) {
     const tbody = el("pcapRunsTable");
+    const historyBody = el("pcapHistoryTable");
     const summaryHost = el("pcapReplaySummary");
-    if (!tbody || !summaryHost) return;
+    const labelsHost = el("pcapTopLabels");
+    if (!tbody || !historyBody || !summaryHost || !labelsHost) return;
 
     tbody.innerHTML = "";
+    historyBody.innerHTML = "";
     summaryHost.innerHTML = "";
+    labelsHost.innerHTML = "";
     const pcapRuns = (runs || []).filter((run) => run.run_kind === "pcap_replay");
-    if (!pcapRuns.length) {
-        tbody.innerHTML = `<tr><td colspan="6">No PCAP replay runs yet.</td></tr>`;
+    const profileLabel = (profile) => {
+        const normalized = String(profile || "").toLowerCase();
+        if (normalized === "attack") return "Attack Test";
+        if (normalized === "baseline") return "Normal Traffic Check";
+        if (normalized === "mixed") return "Mixed Traffic Check";
+        return "General Replay";
+    };
+    const latestReplay = pcapRuns[0] || null;
+    const attackRuns = pcapRuns.filter((run) => String(run.benchmark_profile || "") === "attack");
+    if (!latestReplay) {
+        tbody.innerHTML = `<tr><td colspan="6">Run an attack-profile PCAP to measure correctly detected results.</td></tr>`;
+        historyBody.innerHTML = `<tr><td colspan="7">No PCAP replays yet.</td></tr>`;
         summaryHost.innerHTML = `<div class="mini-metric"><span>Replay Status</span><strong>Idle</strong></div>`;
+        labelsHost.innerHTML = `<div class="mini-metric"><span>Labels</span><strong>No attack replay yet</strong></div>`;
         return;
     }
 
-    const latest = pcapRuns[0];
+    const latest = latestReplay;
+    const latestProfile = String(latest.benchmark_profile || "").toLowerCase();
     const latestStatus = String(latest.replay_status || "completed").toLowerCase();
+    const latestPhase = String(latest.replay_phase || "").replaceAll("_", " ");
     const latestStatusLabel = latestStatus === "running"
         ? "Running"
         : latestStatus === "failed"
             ? "Failed"
             : "Completed";
     const summaryItems = [
-        ["Latest PCAP", latest.pcap_name || "n/a"],
+        ["Latest Replay", latest.pcap_name || "n/a"],
+        ["Replay Type", profileLabel(latestProfile)],
         ["Replay Status", latestStatusLabel],
+        ["Replay Phase", latestPhase || (latestStatusLabel === "Completed" ? "completed" : "queued")],
         ["Replay Progress", latestStatus === "running" ? `${Number(latest.replay_progress_pct || 0).toFixed(1)}%` : "100.0%"],
-        ["Attack-like Flows", latest.attack_candidate_flows || 0],
-        ["IDS Detections", latest.detection_count || 0],
-        ["Detection Rate", `${Number(latest.detection_rate_pct || 0).toFixed(1)}%`],
     ];
+    if (latestProfile === "attack") {
+        summaryItems.push(
+            ["Attack Pairs", latest.total_pair_count || 0],
+            ["Correctly Detected", latest.elevated_pair_count || 0],
+            ["Correctly Detected %", `${Number(latest.benchmark_score_pct || 0).toFixed(1)}%`],
+        );
+    } else {
+        summaryItems.push(
+            ["Pairs Checked", latest.total_pair_count || 0],
+            ["Detected", latest.elevated_pair_count || 0],
+            ["Detected %", `${Number(latest.elevated_pair_rate_pct || 0).toFixed(1)}%`],
+        );
+    }
     summaryItems.forEach(([label, value]) => {
         const card = document.createElement("div");
         card.className = "mini-metric";
@@ -734,24 +814,100 @@ function renderPcapRuns(runs) {
         summaryHost.appendChild(card);
     });
 
-    pcapRuns.slice(0, 12).forEach((run) => {
+    const topLabels = Array.isArray(latest.top_detected_labels) ? latest.top_detected_labels : [];
+    if (!topLabels.length) {
+        const noLabelsText = latestProfile === "attack"
+            ? "No suspicious labels yet"
+            : `${profileLabel(latestProfile)} replay shown above. Use an attack-profile PCAP to populate the Correctly Detected table.`;
+        labelsHost.innerHTML = `<div class="mini-metric"><span>Labels</span><strong>${noLabelsText}</strong></div>`;
+    } else {
+        topLabels.forEach((item) => {
+            const card = document.createElement("div");
+            card.className = "mini-metric";
+            card.innerHTML = `<span>${item.label}</span><strong>${item.count}</strong>`;
+            labelsHost.appendChild(card);
+        });
+    }
+
+    pcapRuns.slice(0, 20).forEach((run) => {
         const tr = document.createElement("tr");
         const runStatus = String(run.replay_status || "completed").toLowerCase();
-        const detectionCell = runStatus === "running"
-            ? "Processing..."
+        const statusLabel = runStatus === "running"
+            ? "Running"
             : runStatus === "failed"
                 ? "Failed"
-                : (run.detection_count || 0);
+                : "Completed";
+        const isAttack = String(run.benchmark_profile || "").toLowerCase() === "attack";
+        tr.innerHTML = `
+            <td>${run.pcap_name || "unknown"}</td>
+            <td>${profileLabel(run.benchmark_profile)}</td>
+            <td>${statusLabel}</td>
+            <td>${runStatus === "running" ? `${run.sent_packet_count || 0}/${run.packet_count || 0}` : (run.packet_count || 0)}</td>
+            <td>${run.total_flow_count || run.matched_flows || 0}</td>
+            <td>${run.total_pair_count || 0}</td>
+            <td>${runStatus === "running" ? "Processing..." : (isAttack ? (run.elevated_pair_count || 0) : (run.elevated_pair_count || 0))}</td>
+        `;
+        historyBody.appendChild(tr);
+    });
+
+    if (!attackRuns.length) {
+        const replayLabel = latest.pcap_name || "latest replay";
+        const message = latestProfile === "baseline"
+            ? `${replayLabel} is not an attack sample. Check Replay History below for detections instead.`
+            : latestProfile === "mixed"
+                ? `${replayLabel} is mixed traffic, not a pure attack sample. Check Replay History below for detections instead.`
+                : `${replayLabel} is not tagged as an attack sample. Use an attack PCAP to fill this table.`;
+        tbody.innerHTML = `<tr><td colspan="6">${message}</td></tr>`;
+        return;
+    }
+
+    attackRuns.slice(0, 12).forEach((run) => {
+        const tr = document.createElement("tr");
+        const runStatus = String(run.replay_status || "completed").toLowerCase();
+        const scoreLabel = runStatus === "running"
+            ? `${Number(run.replay_progress_pct || 0).toFixed(1)}%`
+            : `${Number(run.benchmark_score_pct || 0).toFixed(1)}%`;
         tr.innerHTML = `
             <td>${run.pcap_name || "unknown"}</td>
             <td>${runStatus === "running" ? `${run.sent_packet_count || 0}/${run.packet_count || 0}` : (run.packet_count || 0)}</td>
             <td>${run.total_flow_count || run.matched_flows || 0}</td>
-            <td>${run.attack_candidate_flows || 0}</td>
-            <td>${detectionCell}</td>
-            <td>${runStatus === "running" ? `${Number(run.replay_progress_pct || 0).toFixed(1)}%` : `${Number(run.detection_rate_pct || 0).toFixed(1)}%`}</td>
-        `;
+            <td>${run.total_pair_count || 0}</td>
+            <td>${runStatus === "running" ? "Processing..." : (run.elevated_pair_count || 0)}</td>
+            <td>${scoreLabel}</td>
+            `;
         tbody.appendChild(tr);
     });
+}
+
+async function refreshPcapStatus(runId = activeReplayId) {
+    if (!runId) return;
+    const data = await api(`/pcap_status?id=${encodeURIComponent(runId)}`);
+    renderPcapRuns(data.runs || []);
+    const run = data.run;
+    if (!run) {
+        stopPcapPolling();
+        return;
+    }
+
+    const status = String(run.replay_status || "").toLowerCase();
+    if (status === "completed") {
+        setStatus(`PCAP ${run.pcap_name || "replay"} completed with ${run.elevated_detection_count || 0} elevated alert(s).`);
+        stopPcapPolling();
+        await refreshDashboard();
+    } else if (status === "failed") {
+        setStatus(run.replay_error ? `PCAP replay failed: ${run.replay_error}` : "PCAP replay failed.");
+        stopPcapPolling();
+        await refreshDashboard();
+    }
+}
+
+function startPcapPolling(runId) {
+    stopPcapPolling();
+    activeReplayId = runId;
+    refreshPcapStatus(runId).catch((err) => setStatus(err.message));
+    pcapPollHandle = window.setInterval(() => {
+        refreshPcapStatus(runId).catch((err) => setStatus(err.message));
+    }, 500);
 }
 
 function renderTopTalkers(items) {
@@ -896,7 +1052,7 @@ async function refreshDashboard() {
     renderHealingQueue(analysis.healing_queue || []);
     renderHealingHistory(analysis.healing_history || []);
     renderAttackRuns(analysis.attack_runs || []);
-    renderPcapRuns(analysis.attack_runs || []);
+    renderPcapRuns(analysis.pcap_runs || []);
     renderTopTalkers(analysis.top_talkers || []);
     renderFeatureHighlights(analysis.feature_highlights || {});
     renderOpsChecklist(analysis);
@@ -924,6 +1080,13 @@ async function stopCapture() {
 async function clearResults() {
     await api("/clear_results", { method: "POST" });
     setStatus("Results and alerts cleared.");
+    await refreshDashboard();
+}
+
+async function clearPcapReplays() {
+    stopPcapPolling();
+    const data = await api("/clear_pcap_replays", { method: "POST" });
+    setStatus(`Cleared ${data.removed_runs || 0} saved PCAP replay(s), ${data.removed_results || 0} replay result row(s), and ${data.removed_alerts || 0} replay alert(s).`);
     await refreshDashboard();
 }
 
@@ -990,7 +1153,9 @@ async function runAttack() {
 
 async function replayPcap() {
     const button = el("replayPcapBtn");
-    const pcapName = el("pcapFile").value;
+    const pcapSelect = el("pcapFile");
+    const selectedPcap = pcapSelect.selectedOptions[0] || null;
+    const pcapName = pcapSelect.value;
     if (!pcapName) {
         setStatus("No PCAP file is available to replay.");
         return;
@@ -1009,11 +1174,27 @@ async function replayPcap() {
                 loop_count: Number(el("pcapLoops").value || 1),
                 packets_per_second: Number(el("pcapRate").value || 0),
                 packet_limit: Number(el("pcapLimit").value || 0),
+                send_packets: Boolean(el("pcapSendPackets").checked),
             }),
         });
         const via = data.iface ? ` via ${data.iface}` : "";
-        setStatus(`Started replay for ${data.pcap_name}${via}. Watch the PCAP Replay tab for completion.`);
-        setTimeout(refreshDashboard, 1000);
+        const replayId = data.replay_id || data.replay_run_id;
+        if (replayId) {
+            startPcapPolling(replayId);
+        }
+        const replayProfile = String(selectedPcap?.dataset.profile || "").toLowerCase();
+        if (data.send_packets) {
+            setStatus(`Started network replay for ${data.pcap_name}${via}. Watch the PCAP Replay tab for completion.`);
+        } else if (replayProfile === "attack") {
+            setStatus(`Started fast IDS analysis for ${data.pcap_name}. This is an attack-profile PCAP, so it will appear in Correctly Detected.`);
+        } else if (replayProfile === "baseline") {
+            setStatus(`Started fast IDS analysis for ${data.pcap_name}. This is a normal-traffic check, so replay status will show above but it will not enter Correctly Detected.`);
+        } else if (replayProfile === "mixed") {
+            setStatus(`Started fast IDS analysis for ${data.pcap_name}. This is mixed traffic, so replay status will show above but it will not enter Correctly Detected.`);
+        } else {
+            setStatus(`Started fast IDS analysis for ${data.pcap_name}. Results should complete quickly.`);
+        }
+        setTimeout(() => refreshPcapStatus(replayId).catch((err) => setStatus(err.message)), 150);
     } finally {
         button.disabled = false;
         button.textContent = previousLabel;
@@ -1035,6 +1216,7 @@ function bindEvents() {
     el("startBtn").addEventListener("click", () => startCapture().catch((err) => setStatus(err.message)));
     el("stopBtn").addEventListener("click", () => stopCapture().catch((err) => setStatus(err.message)));
     el("clearBtn").addEventListener("click", () => clearResults().catch((err) => setStatus(err.message)));
+    el("clearPcapRunsBtn").addEventListener("click", () => clearPcapReplays().catch((err) => setStatus(err.message)));
     el("savePreventionBtn").addEventListener("click", () => savePrevention().catch((err) => setStatus(err.message)));
     el("saveHealingBtn").addEventListener("click", () => saveHealing().catch((err) => setStatus(err.message)));
     el("simulateBtn").addEventListener("click", () => runAttack().catch((err) => setStatus(err.message)));
@@ -1042,6 +1224,7 @@ function bindEvents() {
     el("replayPcapBtn").addEventListener("click", () => replayPcap().catch((err) => setStatus(err.message)));
     el("attackType").addEventListener("change", updateAttackHint);
     el("pcapFile").addEventListener("change", updatePcapHint);
+    el("pcapSendPackets").addEventListener("change", updatePcapHint);
     el("iface").addEventListener("change", () => {
         syncAttackTargetFromInterface(true);
         updatePcapHint();
@@ -1082,6 +1265,11 @@ async function boot() {
         refreshDashboard().catch((err) => setStatus(err.message));
     }, 3000);
 }
+
+window.addEventListener("beforeunload", () => {
+    stopPcapPolling();
+    if (pollHandle) window.clearInterval(pollHandle);
+});
 
 window.addEventListener("load", () => {
     boot().catch((err) => setStatus(err.message));

@@ -18,9 +18,9 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 try:
-    from scapy.all import Ether, IP, TCP, UDP, rdpcap, send, sendp, sniff
+    from scapy.all import Ether, IP, PcapReader, Raw, TCP, UDP, rdpcap, send, sendp, sniff
 except ImportError:  # pragma: no cover
-    Ether = IP = TCP = UDP = rdpcap = send = sendp = sniff = None
+    Ether = IP = PcapReader = Raw = TCP = UDP = rdpcap = send = sendp = sniff = None
 
 
 def resource_root() -> Path:
@@ -53,6 +53,8 @@ RESULTS_FILE = RUNTIME_DIR / "results.json"
 STATE_FILE = RUNTIME_DIR / "runtime_state.json"
 EXPORT_FILE = RUNTIME_DIR / "export_results.csv"
 PCAP_TEST_DIR = BASE_DIR / "ExternalTools" / "tcpreplay-test-kit" / "pcaps"
+FAST_PCAP_ANALYSIS_LIMIT = 20000
+PCAP_REPLAY_VERSION = 3
 MAX_RESULTS = 500
 MAX_ALERTS = 250
 MAX_HEAL_HISTORY = 100
@@ -61,6 +63,9 @@ CAPTURE_TIMEOUT_SECONDS = 3
 BPF_FILTER = "ip and not (dst host 255.255.255.255 or dst net 224.0.0.0/4)"
 RISK_RANK = {"normal": 0, "low": 1, "medium": 2, "high": 3}
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
+AUTH_PORTS = {21, 22, 23, 25, 110, 143, 389, 445, 1433, 1521, 3306, 3389, 5432, 5900, 6379}
+DNS_PORTS = {53, 5353}
+INFRA_UDP_PORTS = {53, 67, 68, 69, 123, 137, 138, 161, 162, 500, 1900, 5353}
 
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -239,6 +244,33 @@ def is_suspicious_label(label: str | None) -> bool:
     return normalized not in ("", "BENIGN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "MODELS_UNAVAILABLE", "ERROR")
 
 
+def threat_heuristics_only(heuristics) -> list[str]:
+    benign_markers = {"benign_dns_like", "benign_industrial_polling", "benign_web_like", "rf_benign_override", "public_quic_like", "benign_local_icmp"}
+    return [h for h in (heuristics or []) if h not in benign_markers]
+
+
+def replay_pair_key(record: dict) -> tuple:
+    flow_key = (record.get("flow_key", {}) or {}) if isinstance(record.get("flow_key"), dict) else {}
+    src_ip = str(flow_key.get("src_ip", "") or "")
+    dst_ip = str(flow_key.get("dst_ip", "") or "")
+    sport = int(flow_key.get("sport", 0) or 0)
+    dport = int(flow_key.get("dport", 0) or 0)
+    proto = int(flow_key.get("proto", 0) or 0)
+    host_pair = tuple(sorted((src_ip, dst_ip)))
+    ephemeral_floor = 49152
+    if proto in (1, 58):
+        service_port = 0
+    elif sport >= ephemeral_floor and dport < ephemeral_floor:
+        service_port = dport
+    elif dport >= ephemeral_floor and sport < ephemeral_floor:
+        service_port = sport
+    elif sport and dport:
+        service_port = min(sport, dport)
+    else:
+        service_port = max(sport, dport)
+    return (proto, host_pair, service_port)
+
+
 def is_privateish_ip(value: str) -> bool:
     try:
         parsed = ip_address(str(value or "").split("%")[0])
@@ -276,6 +308,168 @@ def looks_like_public_quic(flow_info: dict) -> bool:
         return False
 
     return total_pkts <= 180 and avg_pkt_size < 1100 and flow_pps < 1200
+
+
+def raise_risk(current: str | None, target: str) -> str:
+    current_norm = str(current or "normal").lower()
+    target_norm = str(target or "normal").lower()
+    return target_norm if RISK_RANK.get(target_norm, 0) > RISK_RANK.get(current_norm, 0) else current_norm
+
+
+def looks_like_benign_dns(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 17:
+        return False
+    sport = int(flow_info.get("sport", 0) or 0)
+    dport = int(flow_info.get("dport", 0) or 0)
+    total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+    flow_pps = float(flow_info.get("flow_packets/s", 0) or 0)
+    return (sport in DNS_PORTS or dport in DNS_PORTS) and total_pkts <= 40 and avg_pkt_size <= 350 and flow_pps <= 120
+
+
+def looks_like_service_probe(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 6:
+        return False
+    total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
+    ack_count = int(flow_info.get("ack_flag_count", 0) or 0)
+    rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+    return syn_count >= 1 and total_pkts <= 8 and (ack_count <= 2 or rst_count >= 1)
+
+
+def looks_like_benign_industrial_polling(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 6:
+        return False
+
+    src_ip = str(flow_info.get("src_ip", "") or "")
+    dst_ip = str(flow_info.get("dst_ip", "") or "")
+    if not (is_privateish_ip(src_ip) and is_privateish_ip(dst_ip)):
+        return False
+
+    sport = int(flow_info.get("sport", 0) or 0)
+    dport = int(flow_info.get("dport", 0) or 0)
+    industrial_ports = {102, 502, 2404, 20000, 44818, 47808, 1911, 9600, 5440}
+    if sport not in industrial_ports and dport not in industrial_ports:
+        return False
+
+    total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    bwd_pkts = int(flow_info.get("total_backward_packets", 0) or 0)
+    avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+    syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
+    rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+    ack_count = int(flow_info.get("ack_flag_count", 0) or 0)
+
+    return total_pkts >= 3 and total_pkts <= 40 and bwd_pkts >= 1 and avg_pkt_size <= 200 and syn_count <= 2 and rst_count <= 2 and ack_count >= 1
+
+
+def looks_like_benign_local_icmp(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 1:
+        return False
+
+    src_ip = str(flow_info.get("src_ip", "") or "")
+    dst_ip = str(flow_info.get("dst_ip", "") or "")
+    if not (is_privateish_ip(src_ip) and is_privateish_ip(dst_ip)):
+        return False
+
+    fwd_pkts = int(flow_info.get("total_fwd_packets", 0) or 0)
+    bwd_pkts = int(flow_info.get("total_backward_packets", 0) or 0)
+    total_pkts = fwd_pkts + bwd_pkts
+    if total_pkts < 4 or min(fwd_pkts, bwd_pkts) < 2:
+        return False
+
+    avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+    flow_pps = float(flow_info.get("flow_packets/s", 0) or 0)
+    flow_bps = float(flow_info.get("flow_bytes/s", 0) or 0)
+    balance = min(fwd_pkts, bwd_pkts) / max(fwd_pkts, bwd_pkts, 1)
+
+    if avg_pkt_size > 256:
+        return False
+    if flow_pps > 30 or flow_bps > 50000:
+        return False
+
+    return balance >= 0.55
+
+
+def looks_like_benign_web_session(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 6:
+        return False
+
+    src_ip = str(flow_info.get("src_ip", "") or "")
+    dst_ip = str(flow_info.get("dst_ip", "") or "")
+    sport = int(flow_info.get("sport", 0) or 0)
+    dport = int(flow_info.get("dport", 0) or 0)
+    web_ports = {80, 443, 8080, 8443}
+    if sport not in web_ports and dport not in web_ports:
+        return False
+
+    has_public_peer = (is_privateish_ip(src_ip) and is_public_ip(dst_ip)) or (is_public_ip(src_ip) and is_privateish_ip(dst_ip))
+    if not has_public_peer:
+        return False
+
+    total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    bwd_pkts = int(flow_info.get("total_backward_packets", 0) or 0)
+    avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+    syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
+    rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+
+    return total_pkts >= 6 and total_pkts <= 500 and bwd_pkts >= 2 and avg_pkt_size <= 1600 and syn_count <= 3 and rst_count <= 2
+
+
+def looks_like_packet_injection(flow_info: dict) -> bool:
+    proto = int(flow_info.get("proto", 0) or 0)
+    if proto != 6:
+        return False
+
+    sport = int(flow_info.get("sport", 0) or 0)
+    dport = int(flow_info.get("dport", 0) or 0)
+    if 80 not in (sport, dport):
+        return False
+
+    total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    if total_pkts < 4:
+        return False
+
+    fwd_seq_dup = int(flow_info.get("fwd_tcp_seq_dup_count", 0) or 0)
+    fwd_ack_dup = int(flow_info.get("fwd_tcp_ack_dup_count", 0) or 0)
+    bwd_ttl_unique = int(flow_info.get("bwd_ttl_unique_count", 0) or 0)
+    bwd_seq_dup = int(flow_info.get("bwd_tcp_seq_dup_count", 0) or 0)
+    bwd_ack_dup = int(flow_info.get("bwd_tcp_ack_dup_count", 0) or 0)
+    bwd_synack_dup = int(flow_info.get("bwd_synack_count", 0) or 0)
+    bwd_http_status_count = int(flow_info.get("bwd_http_status_count", 0) or 0)
+    total_bwd_pkts = int(flow_info.get("total_backward_packets", 0) or 0)
+    rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+    avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+
+    strong_http_conflict = bwd_ttl_unique >= 2 and bwd_http_status_count >= 2 and total_pkts <= 20
+    synack_collision = bwd_ttl_unique >= 2 and bwd_synack_dup >= 2
+    heavy_response_collision = bwd_ttl_unique >= 2 and (
+        (bwd_seq_dup >= 5 and bwd_ack_dup >= 40 and fwd_seq_dup >= 20)
+        or (bwd_seq_dup >= 8 and bwd_ack_dup >= 20 and total_bwd_pkts >= 40)
+    )
+    short_response_collision = (
+        bwd_ttl_unique >= 2
+        and bwd_seq_dup >= 2
+        and fwd_seq_dup >= 2
+        and fwd_ack_dup >= 2
+        and total_bwd_pkts <= 12
+        and (bwd_http_status_count >= 1 or bwd_synack_dup >= 2)
+    )
+    reset_collision = rst_count >= 2 and bwd_ttl_unique >= 2 and bwd_seq_dup >= 1
+    ttl_burst_collision = bwd_ttl_unique >= 3 and (bwd_http_status_count >= 2 or bwd_synack_dup >= 2)
+
+    return avg_pkt_size >= 40 and (
+        strong_http_conflict
+        or synack_collision
+        or heavy_response_collision
+        or short_response_collision
+        or reset_collision
+        or ttl_burst_collision
+    )
 
 
 def compute_heal_at(blocked_at: str | None, window_seconds: int) -> str:
@@ -573,12 +767,24 @@ def preferred_attack_target(iface_name: str = "") -> tuple[str, str]:
     return "127.0.0.1", "Loopback"
 
 
+def pcap_is_readable(path: Path) -> bool:
+    try:
+        with PcapReader(str(path)) as reader:
+            for _ in reader:
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def available_pcap_files() -> list[dict]:
     if not PCAP_TEST_DIR.exists():
         return []
 
     pcaps = []
     for path in sorted(PCAP_TEST_DIR.glob("*.pcap")):
+        if not pcap_is_readable(path):
+            continue
         try:
             size = path.stat().st_size
         except OSError:
@@ -588,9 +794,43 @@ def available_pcap_files() -> list[dict]:
                 "name": path.name,
                 "path": str(path),
                 "size_bytes": int(size),
+                **pcap_profile_info(path.name),
             }
         )
     return pcaps
+
+
+def pcap_profile_info(pcap_name: str) -> dict:
+    name = str(pcap_name or "").strip().lower()
+    if name.startswith("attack-") or "packet-injection" in name:
+        return {
+            "benchmark_profile": "attack",
+            "benchmark_goal": "Elevate malicious web injection pairs",
+            "benchmark_score_kind": "attack_coverage",
+        }
+    if name.startswith("4sics-"):
+        return {
+            "benchmark_profile": "baseline",
+            "benchmark_goal": "Stay quiet on benign ICS baseline traffic",
+            "benchmark_score_kind": "baseline_quiet",
+        }
+    if name == "smallflows.pcap":
+        return {
+            "benchmark_profile": "baseline",
+            "benchmark_goal": "Stay mostly quiet on ordinary traffic",
+            "benchmark_score_kind": "baseline_quiet",
+        }
+    if name == "bigflows.pcap":
+        return {
+            "benchmark_profile": "mixed",
+            "benchmark_goal": "Maintain low noise on mixed traffic while still surfacing strong attack pairs",
+            "benchmark_score_kind": "mixed_quiet",
+        }
+    return {
+        "benchmark_profile": "unknown",
+        "benchmark_goal": "General replay validation",
+        "benchmark_score_kind": "mixed_quiet",
+    }
 
 
 def save_uploaded_pcap(file_storage) -> dict:
@@ -616,6 +856,23 @@ def save_uploaded_pcap(file_storage) -> dict:
     }
 
 
+def load_pcap_packets(pcap_path: Path, packet_limit: int | None = None) -> list:
+    if PcapReader is None:
+        packets = list(rdpcap(str(pcap_path)))
+        if packet_limit is not None and int(packet_limit) > 0:
+            return packets[: int(packet_limit)]
+        return packets
+
+    packets = []
+    limit = int(packet_limit) if packet_limit is not None and int(packet_limit) > 0 else None
+    with PcapReader(str(pcap_path)) as reader:
+        for packet in reader:
+            packets.append(packet)
+            if limit is not None and len(packets) >= limit:
+                break
+    return packets
+
+
 def replay_pcap_file(
     pcap_name: str,
     iface: str | None = None,
@@ -635,12 +892,9 @@ def replay_pcap_file(
     if not pcap_path.exists():
         raise FileNotFoundError(f"PCAP not found: {safe_name}")
 
-    packets = list(rdpcap(str(pcap_path)))
+    packets = load_pcap_packets(pcap_path, packet_limit=packet_limit)
     if not packets:
         raise ValueError(f"PCAP is empty: {safe_name}")
-
-    if packet_limit is not None and int(packet_limit) > 0:
-        packets = packets[: int(packet_limit)]
 
     loop_count = max(1, int(loop_count or 1))
     replay_packets = []
@@ -691,8 +945,18 @@ def send_replay_packets_in_batches(
         return {"resolved_iface": resolve_capture_iface(iface or ""), "duration_seconds": 0.0}
 
     pps = float(packets_per_second or 0)
-    inter = (1.0 / pps) if pps > 0 else 0.01
-    batch_size = 1 if os.name == "nt" else (256 if total_packets > 512 else max(1, total_packets))
+    inter = (1.0 / pps) if pps > 0 else 0.001
+    if os.name == "nt":
+        if total_packets >= 20000:
+            batch_size = 256
+        elif total_packets >= 5000:
+            batch_size = 128
+        elif total_packets >= 1000:
+            batch_size = 64
+        else:
+            batch_size = 16
+    else:
+        batch_size = 512 if total_packets > 2048 else (256 if total_packets > 512 else max(1, total_packets))
     send_kwargs = {"verbose": False}
     resolved_iface = resolve_capture_iface(iface or "")
     if resolved_iface:
@@ -704,9 +968,12 @@ def send_replay_packets_in_batches(
 
     for offset in range(0, total_packets, batch_size):
         batch = replay_packets[offset:offset + batch_size]
-        sender(batch, inter=inter, **send_kwargs)
+        batch_inter = inter if len(batch) <= 8 else min(inter, 0.0002) if pps > 0 else 0
+        sender(batch, inter=batch_inter, **send_kwargs)
         if progress_callback:
             progress_callback(min(total_packets, offset + len(batch)), total_packets)
+        if os.name == "nt" and total_packets > 1000:
+            time.sleep(0.001)
 
     return {
         "resolved_iface": resolved_iface,
@@ -729,13 +996,28 @@ def process_pcap_replay_async(
     packet_limit: int | None,
     loop_count: int,
     packets_per_second: float | None,
+    send_packets: bool,
     started_ts: float,
 ) -> None:
     try:
+        effective_packet_limit = packet_limit
+        auto_limited = False
+        if not send_packets and (effective_packet_limit is None or int(effective_packet_limit) <= 0):
+            effective_packet_limit = FAST_PCAP_ANALYSIS_LIMIT
+            auto_limited = True
+
+        update_attack_run(
+            replay_id,
+            replay_status="running",
+            replay_phase="loading",
+            replay_progress_pct=2.0,
+            packet_limit=effective_packet_limit,
+            auto_limited=auto_limited,
+        )
         replay = replay_pcap_file(
             pcap_name=pcap_name,
             iface=requested_iface or STATE.selected_iface,
-            packet_limit=packet_limit,
+            packet_limit=effective_packet_limit,
             loop_count=loop_count,
             packets_per_second=packets_per_second,
         )
@@ -744,50 +1026,135 @@ def process_pcap_replay_async(
             update_attack_run(
                 replay_id,
                 packet_count=int(replay.get("packet_count") or len(replay_packets)),
-                replay_progress_pct=0.0,
+                replay_phase="extracting_features",
+                replay_progress_pct=15.0,
             )
             replay_rows = feature_rows_from_packets(replay_packets)
+            update_attack_run(
+                replay_id,
+                total_flow_count=len(replay_rows),
+                matched_flows=len(replay_rows),
+                replay_phase="scoring",
+                replay_progress_pct=55.0,
+            )
             replay_records = score_rows(replay_rows)
-            attack_candidate_flows = 0
-            detected_flows = 0
+            suspicious_flow_count = 0
+            suspicious_detected_flows = 0
+            elevated_detected_flows = 0
+            total_pairs = set()
+            suspicious_pairs = set()
+            elevated_pairs = set()
             first_label = None
+            suspicious_label_counter = Counter()
             for record in replay_records:
                 record["attack_run_id"] = replay_id
                 record["attack_run_label"] = "PCAP Replay"
                 record["traffic_source"] = "pcap_replay"
-                if is_suspicious_label(record.get("rf_labels")):
-                    attack_candidate_flows += 1
-                if str(record.get("severity", "normal")).lower() in ("medium", "high"):
-                    detected_flows += 1
+                pair_key = replay_pair_key(record)
+                total_pairs.add(pair_key)
+                threat_heuristics = threat_heuristics_only(record.get("heuristics"))
+                is_suspicious_flow = (
+                    is_suspicious_label(record.get("rf_labels"))
+                    or str(record.get("severity", "normal")).lower() in ("medium", "high")
+                    or bool(record.get("ae_anomaly"))
+                    or bool(threat_heuristics)
+                )
+                if is_suspicious_flow:
+                    suspicious_flow_count += 1
+                    suspicious_detected_flows += 1
+                    suspicious_pairs.add(pair_key)
+                    suspicious_label_counter[str(record.get("rf_labels") or "UNKNOWN")] += 1
                     if first_label is None:
                         first_label = record.get("rf_labels")
+                if str(record.get("severity", "normal")).lower() in ("medium", "high"):
+                    elevated_detected_flows += 1
+                    elevated_pairs.add(pair_key)
+                    if first_label is None:
+                        first_label = record.get("rf_labels")
+            total_pair_count = len(total_pairs)
+            suspicious_pair_count = len(suspicious_pairs)
+            elevated_pair_count = len(elevated_pairs)
+            profile_info = pcap_profile_info(pcap_name)
+            benchmark_profile = str(profile_info.get("benchmark_profile", "unknown") or "unknown")
+            benchmark_kind = str(profile_info.get("benchmark_score_kind", "mixed_quiet") or "mixed_quiet")
+            if benchmark_kind == "attack_coverage":
+                benchmark_score_pct = round((elevated_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0
+                benchmark_score_label = "Attack coverage"
+            elif benchmark_kind == "baseline_quiet":
+                benchmark_score_pct = round(100.0 - ((elevated_pair_count / total_pair_count) * 100), 2) if total_pair_count else 100.0
+                benchmark_score_label = "Quiet baseline"
+            else:
+                benchmark_score_pct = round(100.0 - ((elevated_pair_count / total_pair_count) * 100), 2) if total_pair_count else 100.0
+                benchmark_score_label = "Noise control"
             append_results(replay_records)
-            send_result = send_replay_packets_in_batches(
-                replay_packets,
-                iface=requested_iface or STATE.selected_iface,
-                packets_per_second=packets_per_second,
-                progress_callback=lambda sent_count, total_count: update_attack_run(
-                    replay_id,
-                    replay_status="running",
-                    sent_packet_count=sent_count,
-                    replay_progress_pct=round((sent_count / max(1, total_count)) * 100, 1),
-                ),
+            update_attack_run(
+                replay_id,
+                matched_flows=len(replay_records),
+                total_flow_count=len(replay_records),
+                total_pair_count=total_pair_count,
+                attack_candidate_flows=suspicious_flow_count,
+                detection_count=suspicious_detected_flows,
+                elevated_detection_count=elevated_detected_flows,
+                suspicious_pair_count=suspicious_pair_count,
+                elevated_pair_count=elevated_pair_count,
+                first_detected_label=first_label,
+                top_detected_labels=[{"label": label, "count": count} for label, count in suspicious_label_counter.most_common(5)],
+                replay_phase="finalizing",
+                replay_progress_pct=85.0 if send_packets else 95.0,
+                detection_rate_pct=round((suspicious_detected_flows / suspicious_flow_count) * 100, 2) if suspicious_flow_count else 0.0,
+                elevated_detection_rate_pct=round((elevated_detected_flows / suspicious_flow_count) * 100, 2) if suspicious_flow_count else 0.0,
+                elevated_pair_rate_pct=round((elevated_pair_count / suspicious_pair_count) * 100, 2) if suspicious_pair_count else 0.0,
+                total_pair_elevated_rate_pct=round((elevated_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0,
+                suspicious_pair_rate_pct=round((suspicious_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0,
+                benchmark_profile=benchmark_profile,
+                benchmark_score_kind=benchmark_kind,
+                benchmark_score_pct=benchmark_score_pct,
+                benchmark_score_label=benchmark_score_label,
             )
+            if send_packets:
+                send_result = send_replay_packets_in_batches(
+                    replay_packets,
+                    iface=requested_iface or STATE.selected_iface,
+                    packets_per_second=packets_per_second,
+                    progress_callback=lambda sent_count, total_count: update_attack_run(
+                        replay_id,
+                        replay_status="running",
+                        replay_phase="sending_packets",
+                        sent_packet_count=sent_count,
+                        replay_progress_pct=round(85.0 + ((sent_count / max(1, total_count)) * 14.0), 1),
+                    ),
+                )
+            else:
+                send_result = {
+                    "resolved_iface": resolve_capture_iface(requested_iface or STATE.selected_iface),
+                    "duration_seconds": 0.0,
+                }
             update_attack_run(
                 replay_id,
                 replay_status="completed",
                 replay_error=None,
                 finished_ts=started_ts + float(send_result.get("duration_seconds") or replay.get("duration_seconds") or 0),
                 packet_count=int(replay.get("packet_count") or 0),
-                sent_packet_count=int(replay.get("packet_count") or 0),
+                sent_packet_count=int(replay.get("packet_count") or 0) if send_packets else 0,
                 matched_flows=len(replay_records),
                 total_flow_count=len(replay_records),
-                attack_candidate_flows=attack_candidate_flows,
-                detection_count=detected_flows,
+                total_pair_count=total_pair_count,
+                attack_candidate_flows=suspicious_flow_count,
+                detection_count=suspicious_detected_flows,
+                elevated_detection_count=elevated_detected_flows,
+                suspicious_pair_count=suspicious_pair_count,
+                elevated_pair_count=elevated_pair_count,
                 first_detected_label=first_label,
+                top_detected_labels=[{"label": label, "count": count} for label, count in suspicious_label_counter.most_common(5)],
                 replay_progress_pct=100.0,
+                replay_phase="completed",
                 resolved_iface=send_result.get("resolved_iface"),
-                detection_rate_pct=round((detected_flows / attack_candidate_flows) * 100, 2) if attack_candidate_flows else 0.0,
+                replay_mode="wire" if send_packets else "analysis_only",
+                detection_rate_pct=round((suspicious_detected_flows / suspicious_flow_count) * 100, 2) if suspicious_flow_count else 0.0,
+                elevated_detection_rate_pct=round((elevated_detected_flows / suspicious_flow_count) * 100, 2) if suspicious_flow_count else 0.0,
+                elevated_pair_rate_pct=round((elevated_pair_count / suspicious_pair_count) * 100, 2) if suspicious_pair_count else 0.0,
+                total_pair_elevated_rate_pct=round((elevated_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0,
+                suspicious_pair_rate_pct=round((suspicious_pair_count / total_pair_count) * 100, 2) if total_pair_count else 0.0,
             )
         else:
             update_attack_run(
@@ -799,10 +1166,21 @@ def process_pcap_replay_async(
                 sent_packet_count=0,
                 matched_flows=0,
                 total_flow_count=0,
+                total_pair_count=0,
                 attack_candidate_flows=0,
                 detection_count=0,
+                elevated_detection_count=0,
+                suspicious_pair_count=0,
+                elevated_pair_count=0,
+                top_detected_labels=[],
                 replay_progress_pct=100.0,
+                replay_phase="completed",
+                replay_mode="wire" if send_packets else "analysis_only",
                 detection_rate_pct=0.0,
+                elevated_detection_rate_pct=0.0,
+                elevated_pair_rate_pct=0.0,
+                total_pair_elevated_rate_pct=0.0,
+                suspicious_pair_rate_pct=0.0,
             )
         persist_results()
     except Exception as exc:
@@ -811,6 +1189,7 @@ def process_pcap_replay_async(
             replay_status="failed",
             replay_error=str(exc),
             finished_ts=now_ts(),
+            replay_phase="failed",
         )
         persist_results()
 
@@ -818,8 +1197,27 @@ def process_pcap_replay_async(
 def build_capture_ifaces(primary_iface: str) -> list[str]:
     resolved_primary = resolve_capture_iface(primary_iface)
     if os.name == "nt":
+        final_ifaces: list[str] = []
+        seen: set[str] = set()
+
+        def add_iface(iface_name: str) -> None:
+            resolved = resolve_capture_iface(iface_name)
+            if not resolved or resolved in seen or resolved in STATE.failed_ifaces:
+                return
+            seen.add(resolved)
+            final_ifaces.append(resolved)
+
         if resolved_primary and not is_loopback_iface(resolved_primary):
-            return [resolved_primary]
+            add_iface(resolved_primary)
+
+        for item in interface_inventory():
+            if not item.get("is_up"):
+                continue
+            if item.get("is_loopback"):
+                add_iface(str(item.get("name") or ""))
+
+        if final_ifaces:
+            return final_ifaces
 
         available = get_interfaces()
         for iface in available:
@@ -827,7 +1225,11 @@ def build_capture_ifaces(primary_iface: str) -> list[str]:
                 continue
             resolved = resolve_capture_iface(iface)
             if resolved and resolved not in STATE.failed_ifaces:
-                return [resolved]
+                add_iface(resolved)
+                break
+
+        if final_ifaces:
+            return final_ifaces
 
         return [resolved_primary] if resolved_primary else []
 
@@ -855,16 +1257,18 @@ def capture_packets_with_fallback(ifaces: list[str], packet_count: int, timeout_
         return []
 
     if os.name == "nt":
-        primary = ifaces[0]
-        try:
-            packets = sniff(iface=primary, filter=BPF_FILTER, count=packet_count, timeout=timeout_sec)
-            record_packet_debug(packets, primary)
-            return packets
-        except Exception as primary_err:
-            with STATE.lock:
-                STATE.failed_ifaces.add(primary)
-            print(f"Capture failed on {primary}: {primary_err}")
-            return []
+        merged = []
+        per_iface_timeout = max(1, timeout_sec / max(1, len(ifaces)))
+        for iface in ifaces:
+            try:
+                packets = sniff(iface=iface, filter=BPF_FILTER, count=packet_count, timeout=per_iface_timeout)
+                record_packet_debug(packets, iface)
+                merged.extend(packets)
+            except Exception as primary_err:
+                with STATE.lock:
+                    STATE.failed_ifaces.add(iface)
+                print(f"Capture failed on {iface}: {primary_err}")
+        return merged
 
     try:
         iface_arg = ifaces if len(ifaces) > 1 else ifaces[0]
@@ -894,13 +1298,19 @@ def apply_traffic_heuristics(flow_info: dict, pred: dict) -> tuple[dict, list[st
     proto = int(flow_info.get("proto", 0) or 0)
     src_ip = str(flow_info.get("src_ip", "") or "")
     dst_ip = str(flow_info.get("dst_ip", "") or "")
+    sport = int(flow_info.get("sport", 0) or 0)
+    dport = int(flow_info.get("dport", 0) or 0)
     avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
     flow_pps = float(flow_info.get("flow_packets/s", 0) or 0)
     flow_bps = float(flow_info.get("flow_bytes/s", 0) or 0)
     total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+    ack_count = int(flow_info.get("ack_flag_count", 0) or 0)
+    rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+    rf_probs = pred.get("rf_probs") if isinstance(pred.get("rf_probs"), dict) else {}
+    rf_benign_prob = float(rf_probs.get("BENIGN", 0) or 0)
 
     if proto == 1 and total_pkts >= 4 and flow_pps >= 0.8:
-        pred["ensemble_risk"] = "low" if pred.get("ensemble_risk") == "normal" else pred.get("ensemble_risk")
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "low")
         heuristics.append("icmp_repeated")
         if str(pred.get("rf_labels", "BENIGN")).upper() == "BENIGN":
             pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
@@ -910,22 +1320,44 @@ def apply_traffic_heuristics(flow_info: dict, pred: dict) -> tuple[dict, list[st
         pred["ae_anomaly"] = True
         pred["iso_risk"] = "high"
         pred["kmeans_risk"] = "medium"
-        pred["ensemble_risk"] = "high"
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "high")
         heuristics.append("icmp_large_repeated")
         if str(pred.get("rf_labels", "BENIGN")).upper() == "BENIGN":
             pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
             pred["rf_labels"] = "ICMP-FLOOD"
 
-    syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
-    if proto == 6 and syn_count >= 1 and total_pkts <= 6:
-        pred["ensemble_risk"] = "low" if pred.get("ensemble_risk") == "normal" else pred.get("ensemble_risk")
-        heuristics.append("tcp_probe")
-        if str(pred.get("rf_labels", "BENIGN")).upper() == "BENIGN":
+    if looks_like_benign_local_icmp(flow_info):
+        heuristics.append("benign_local_icmp")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("ICMP-ANOMALY", "ICMP-FLOOD", "ANOMALOUS-TRAFFIC"):
             pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
-            pred["rf_labels"] = "PORTSCAN"
+            pred["rf_labels"] = "BENIGN"
+        pred["ae_anomaly"] = False
+        pred["iso_risk"] = "normal"
+        pred["kmeans_risk"] = "normal"
+        pred["ensemble_risk"] = "normal"
 
-    if proto == 6 and syn_count >= 40 and flow_pps >= 80:
-        pred["ensemble_risk"] = "high"
+    syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
+    if proto == 6 and syn_count >= 1 and total_pkts <= 3 and ack_count == 0 and rst_count <= 1:
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "low")
+        heuristics.append("tcp_probe")
+
+    if proto == 6 and dport in AUTH_PORTS and looks_like_service_probe(flow_info):
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "medium")
+        heuristics.append("auth_probe")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("BENIGN", "PORTSCAN", "ANOMALOUS-TRAFFIC"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "AUTH-PROBE"
+
+    if proto == 6 and rst_count >= 2 and syn_count >= 1 and ack_count <= 1 and total_pkts <= 8:
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "medium")
+        heuristics.append("tcp_rst_probe")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("BENIGN", "ANOMALOUS-TRAFFIC"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "RST-SCAN"
+
+    bwd_pkts = int(flow_info.get("total_backward_packets", 0) or 0)
+    if proto == 6 and syn_count >= 40 and flow_pps >= 80 and ack_count <= max(2, int(syn_count * 0.15)) and bwd_pkts <= max(2, int(total_pkts * 0.15)):
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "high")
         heuristics.append("tcp_syn_burst")
         if str(pred.get("rf_labels", "BENIGN")).upper() == "BENIGN":
             pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
@@ -939,13 +1371,71 @@ def apply_traffic_heuristics(flow_info: dict, pred: dict) -> tuple[dict, list[st
         if str(pred.get("ensemble_risk", "normal")).lower() == "high":
             pred["ensemble_risk"] = "low"
 
+    if looks_like_benign_dns(flow_info):
+        heuristics.append("benign_dns_like")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("UDP-FLOOD", "ANOMALOUS-UDP"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "BENIGN"
+        pred["ensemble_risk"] = "normal"
+
+    if looks_like_benign_industrial_polling(flow_info):
+        heuristics.append("benign_industrial_polling")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("ANOMALOUS-TRAFFIC", "PORTSCAN", "SYN-FLOOD"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "BENIGN"
+        pred["ensemble_risk"] = "normal"
+
+    if looks_like_packet_injection(flow_info):
+        pred["ae_anomaly"] = True
+        pred["iso_risk"] = "high"
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "high")
+        heuristics.append("packet_injection")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("BENIGN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "PACKET-INJECTION"
+
+    if "packet_injection" not in heuristics and looks_like_benign_web_session(flow_info) and rf_benign_prob >= 0.65:
+        heuristics.append("benign_web_like")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "PORTSCAN", "SYN-FLOOD"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "BENIGN"
+        pred["ensemble_risk"] = "normal"
+
+    if rf_benign_prob >= 0.93 and not heuristics and proto == 6:
+        heuristics.append("rf_benign_override")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "PORTSCAN", "SYN-FLOOD"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "BENIGN"
+        pred["ensemble_risk"] = "normal"
+
     # Keep UDP flood detection conservative to avoid mislabeling ordinary DNS/video traffic.
     if proto == 17 and flow_pps >= 120 and total_pkts >= 24 and flow_bps >= 25000 and avg_pkt_size >= 250 and not looks_like_public_quic(flow_info):
-        pred["ensemble_risk"] = "high"
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "high")
         heuristics.append("udp_packet_rate")
         if str(pred.get("rf_labels", "BENIGN")).upper() == "BENIGN":
             pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
             pred["rf_labels"] = "UDP-FLOOD"
+
+    if proto == 17 and dport in DNS_PORTS and total_pkts >= 50 and flow_pps >= 80 and not looks_like_benign_dns(flow_info):
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "medium")
+        heuristics.append("dns_abuse")
+        if str(pred.get("rf_labels", "BENIGN")).upper() in ("BENIGN", "ANOMALOUS-UDP"):
+            pred["rf_model_label"] = pred.get("rf_labels", "BENIGN")
+            pred["rf_labels"] = "DNS-ABUSE"
+
+    agreement_count = sum(
+        [
+            bool(pred.get("ae_anomaly")),
+            str(pred.get("ae_risk", "normal")).lower() in ("medium", "high"),
+            str(pred.get("iso_risk", "normal")).lower() in ("medium", "high"),
+            str(pred.get("kmeans_risk", "normal")).lower() in ("medium", "high"),
+            is_suspicious_label(pred.get("rf_labels")),
+            is_suspicious_label(pred.get("gbdt_labels")),
+        ]
+    )
+    if agreement_count >= 3 and str(pred.get("ensemble_risk", "normal")).lower() in ("low", "medium"):
+        pred["ensemble_risk"] = raise_risk(pred.get("ensemble_risk"), "high" if len(heuristics) >= 3 else "medium")
+        heuristics.append("multi_model_agreement")
 
     return pred, heuristics
 
@@ -959,6 +1449,7 @@ def infer_attack_type(flow_info: dict, pred: dict) -> str | None:
     ensemble = (pred.get("ensemble_risk") or "normal").lower()
     rf_label = str(pred.get("rf_labels", "BENIGN")).upper()
     gbdt_label = str(pred.get("gbdt_labels", "BENIGN")).upper()
+    heuristics = set(pred.get("heuristics", []) or [])
 
     # Ignore local loopback chatter from the dashboard/browser/runtime itself,
     # but still allow explicit dashboard test traffic to port 5000.
@@ -974,21 +1465,35 @@ def infer_attack_type(flow_info: dict, pred: dict) -> str | None:
         return None
 
     if proto == 1:
+        if looks_like_benign_local_icmp(flow_info):
+            return None
         return "ICMP-FLOOD" if float(flow_info.get("flow_packets/s", 0) or 0) >= 50 else "ICMP-ANOMALY"
     if proto == 17:
         flow_pps = float(flow_info.get("flow_packets/s", 0) or 0)
         total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
         flow_bps = float(flow_info.get("flow_bytes/s", 0) or 0)
         avg_pkt_size = float(flow_info.get("average_packet_size", 0) or 0)
+        if looks_like_benign_dns(flow_info):
+            return None
         if looks_like_public_quic(flow_info):
             return "ANOMALOUS-UDP" if ensemble in ("medium", "high") else None
+        if dport in DNS_PORTS and total_pkts >= 50 and flow_pps >= 80:
+            return "DNS-ABUSE"
         return "UDP-FLOOD" if flow_pps >= 120 and total_pkts >= 24 and flow_bps >= 25000 and avg_pkt_size >= 250 else "ANOMALOUS-UDP"
     if proto == 6:
         syn_count = int(flow_info.get("syn_flag_count", 0) or 0)
+        rst_count = int(flow_info.get("rst_flag_count", 0) or 0)
+        ack_count = int(flow_info.get("ack_flag_count", 0) or 0)
         total_pkts = int(flow_info.get("total_fwd_packets", 0) or 0) + int(flow_info.get("total_backward_packets", 0) or 0)
+        if looks_like_benign_industrial_polling(flow_info):
+            return None
         if syn_count >= 20 and ensemble == "high":
             return "SYN-FLOOD"
-        if syn_count > 0 and total_pkts <= 10:
+        if dport in AUTH_PORTS and looks_like_service_probe(flow_info):
+            return "AUTH-PROBE"
+        if rst_count >= 2 and syn_count >= 1 and ack_count <= 1 and total_pkts <= 8:
+            return "RST-SCAN"
+        if "tcp_probe_cluster" in heuristics or "horizontal_scan" in heuristics:
             return "PORTSCAN"
     return "ANOMALOUS-TRAFFIC"
 
@@ -1008,28 +1513,69 @@ def severity_from_prediction(pred: dict) -> str:
         if "tcp_probe" not in heuristics:
             return "normal"
 
+    if looks_like_benign_industrial_polling(flow_key):
+        return "normal"
+    if looks_like_benign_local_icmp(flow_key):
+        return "normal"
+
     rf_suspicious = rf_label not in ("BENIGN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "MODELS_UNAVAILABLE", "ERROR")
     gbdt_suspicious = gbdt_label not in ("BENIGN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "MODELS_UNAVAILABLE", "ERROR", "")
+    heuristics = pred.get("heuristics", []) if isinstance(pred.get("heuristics"), list) else []
+    model_votes = pred.get("model_votes", {}) or {}
+    agreement_count = int(model_votes.get("agreement_count", 0))
+    confidence_score = float(model_votes.get("confidence_score", 0) or 0)
+    ppo_suspicious = bool(model_votes.get("ppo_suspicious"))
+    gnn_suspicious = bool(model_votes.get("gnn_suspicious"))
+    gnn_strong = bool(model_votes.get("gnn_strong"))
     anomaly_count = sum(
         [
             str(pred.get("ae_risk", "normal")).lower() in ("medium", "high"),
             str(pred.get("iso_risk", "normal")).lower() == "high",
             str(pred.get("kmeans_risk", "normal")).lower() == "high",
+            ppo_suspicious,
+            gnn_suspicious,
         ]
     )
 
+    if "benign_dns_like" in heuristics or "benign_industrial_polling" in heuristics or "benign_web_like" in heuristics or "rf_benign_override" in heuristics or "benign_local_icmp" in heuristics:
+        return "normal"
+
     if rf_label in ("SYN-FLOOD", "UDP-FLOOD"):
-        return "high" if risk in ("high", "medium") or anomaly_count >= 1 or pred.get("heuristics") else "medium"
+        return "high" if risk in ("high", "medium") or anomaly_count >= 1 or heuristics else "medium"
+    if rf_label == "PACKET-INJECTION":
+        return "high" if risk == "high" or agreement_count >= 2 or "packet_injection" in heuristics else "medium"
+    if rf_label in ("DNS-ABUSE", "BRUTEFORCE", "ICMP-SWEEP"):
+        return "high" if risk == "high" or agreement_count >= 3 or len(heuristics) >= 2 else "medium"
+    if rf_label in ("AUTH-PROBE", "RST-SCAN"):
+        return "medium" if risk in ("high", "medium", "low") or heuristics else "low"
     if rf_label == "PORTSCAN":
-        return "medium" if risk in ("high", "medium", "low") or pred.get("heuristics") else "low"
+        if "horizontal_scan" in heuristics or "tcp_probe_cluster" in heuristics or "real_attack_match" in heuristics:
+            return "high" if "horizontal_scan" in heuristics and (agreement_count >= 3 or confidence_score >= 3.0) else "medium"
+        return "low" if "tcp_probe" in heuristics else "normal"
+    if rf_label in ("ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "ICMP-ANOMALY"):
+        if gnn_strong and anomaly_count >= 3:
+            return "high"
+        if confidence_score >= 5.0 or (gnn_suspicious and anomaly_count >= 3 and len(heuristics) >= 1) or len(heuristics) >= 2:
+            return "medium"
+        if agreement_count >= 3 or anomaly_count >= 2 or risk in ("medium", "high") or heuristics:
+            return "low"
+        return "normal"
     if risk == "high" and rf_suspicious and gbdt_suspicious:
         return "high"
-    if risk in ("high", "medium") and (rf_suspicious or gbdt_suspicious):
+    if agreement_count >= 5 and (rf_suspicious or gbdt_suspicious or anomaly_count >= 3 or gnn_strong):
+        return "high"
+    if agreement_count >= 4 and (rf_suspicious or gbdt_suspicious or anomaly_count >= 2 or gnn_suspicious or ppo_suspicious):
+        return "high"
+    if agreement_count >= 3 and (rf_suspicious or gbdt_suspicious or anomaly_count >= 2 or len(heuristics) >= 1 or gnn_suspicious or ppo_suspicious):
         return "medium"
-    if risk == "low" and (rf_suspicious or gbdt_suspicious or anomaly_count >= 1 or pred.get("heuristics")):
+    if risk in ("high", "medium") and (rf_suspicious or gbdt_suspicious or anomaly_count >= 2 or gnn_suspicious or ppo_suspicious):
+        return "medium"
+    if risk == "low" and (rf_suspicious or gbdt_suspicious or anomaly_count >= 1 or heuristics):
         return "low"
     if risk == "low" and anomaly_count >= 2:
         return "low"
+    if risk == "medium" and anomaly_count >= 2:
+        return "medium"
     return "normal"
 
 
@@ -1149,21 +1695,31 @@ def clear_auto_blocks() -> list[str]:
 def add_alert(record: dict, title: str, message: str, blocked: bool = False) -> dict:
     rf_label = str(record.get("rf_labels", "BENIGN") or "BENIGN").upper()
     flow_key = record.get("flow_key", {}) if isinstance(record.get("flow_key"), dict) else {}
+    src_ip = str(flow_key.get("src_ip", "") or "")
+    dst_ip = str(flow_key.get("dst_ip", "") or "")
     dedupe_dport = flow_key.get("dport")
+    dedupe_pair = (src_ip, dst_ip)
+    dedupe_window = 12
+
+    if rf_label in ("PORTSCAN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP"):
+        dedupe_pair = tuple(sorted((src_ip, dst_ip)))
     if rf_label == "PORTSCAN":
         dedupe_dport = 0
+        dedupe_window = 45
+    elif rf_label in ("ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP"):
+        dedupe_window = 30
 
     alert_key = (
         rf_label,
-        flow_key.get("src_ip"),
-        flow_key.get("dst_ip"),
+        dedupe_pair[0],
+        dedupe_pair[1],
         dedupe_dport,
         record.get("severity", "normal"),
     )
     current_ts = now_ts()
     with STATE.lock:
         last_seen = STATE.recent_alerts.get(alert_key)
-        if last_seen is not None and current_ts - last_seen < 12:
+        if last_seen is not None and current_ts - last_seen < dedupe_window:
             return {}
         STATE.recent_alerts[alert_key] = current_ts
 
@@ -1173,8 +1729,8 @@ def add_alert(record: dict, title: str, message: str, blocked: bool = False) -> 
         "message": message,
         "severity": record.get("severity", "normal"),
         "rf_label": record.get("rf_labels", "BENIGN"),
-        "src_ip": flow_key.get("src_ip"),
-        "dst_ip": flow_key.get("dst_ip"),
+        "src_ip": src_ip,
+        "dst_ip": dst_ip,
         "candidate_block_ip": record.get("candidate_block_ip"),
         "blocked": blocked,
     }
@@ -1192,8 +1748,36 @@ def classify_model_votes(pred: dict) -> dict:
     gbdt_label = str(pred.get("gbdt_labels", "BENIGN")).upper()
     ppo_risk = str(pred.get("ppo_risk", "normal")).lower()
     gnn_label = str(pred.get("gnn_label", "normal")).lower()
-    rf_suspicious = rf_label != "BENIGN" and rf_label not in ("MODELS_UNAVAILABLE", "ERROR")
-    gbdt_suspicious = gbdt_label != "BENIGN" and gbdt_label not in ("MODELS_UNAVAILABLE", "ERROR")
+    gnn_attack_prob = float(pred.get("gnn_attack_prob", 0) or 0)
+    generic_labels = ("BENIGN", "ANOMALOUS-TRAFFIC", "ANOMALOUS-UDP", "ICMP-ANOMALY", "MODELS_UNAVAILABLE", "ERROR")
+    rf_suspicious = rf_label not in generic_labels
+    gbdt_suspicious = gbdt_label not in generic_labels + ("",)
+    ppo_suspicious = ppo_risk in ("medium", "high", "attack")
+    gnn_suspicious = gnn_label == "attack" and gnn_attack_prob >= 0.6
+    gnn_strong = gnn_label == "attack" and gnn_attack_prob >= 0.85
+    agreement_count = sum(
+        [
+            ae_flag,
+            iso_risk in ("medium", "high"),
+            km_risk in ("medium", "high"),
+            rf_suspicious,
+            gbdt_suspicious,
+            ppo_suspicious,
+            gnn_suspicious,
+        ]
+    )
+    confidence_score = round(
+        (
+            (1.0 if ae_flag else 0.0)
+            + (1.0 if iso_risk == "high" else 0.5 if iso_risk == "medium" else 0.0)
+            + (1.0 if km_risk == "high" else 0.5 if km_risk == "medium" else 0.0)
+            + (1.2 if rf_suspicious else 0.0)
+            + (1.0 if gbdt_suspicious else 0.0)
+            + (0.8 if ppo_risk == "high" else 0.5 if ppo_suspicious else 0.0)
+            + (1.0 if gnn_strong else 0.6 if gnn_suspicious else 0.0)
+        ),
+        2,
+    )
     return {
         "ae_flag": ae_flag,
         "ae_risk": ae_risk,
@@ -1201,18 +1785,13 @@ def classify_model_votes(pred: dict) -> dict:
         "kmeans_suspicious": km_risk in ("medium", "high"),
         "rf_suspicious": rf_suspicious,
         "gbdt_suspicious": gbdt_suspicious,
-        "ppo_suspicious": False,
-        "gnn_suspicious": False,
-        "gnn_strong": False,
-        "agreement_count": sum(
-            [
-                ae_flag,
-                iso_risk in ("medium", "high"),
-                km_risk in ("medium", "high"),
-                rf_suspicious,
-                gbdt_suspicious,
-            ]
-        ),
+        "ppo_suspicious": ppo_suspicious,
+        "ppo_risk": ppo_risk,
+        "gnn_suspicious": gnn_suspicious,
+        "gnn_strong": gnn_strong,
+        "gnn_attack_prob": gnn_attack_prob,
+        "agreement_count": agreement_count,
+        "confidence_score": confidence_score,
     }
 
 
@@ -1267,12 +1846,17 @@ def correlate_attack_patterns(records: list[dict]) -> list[dict]:
     probe_groups: dict[tuple[str, str], list[dict]] = {}
     syn_groups: dict[tuple[str, str, int], list[dict]] = {}
     udp_groups: dict[tuple[str, str, int], list[dict]] = {}
+    auth_probe_groups: dict[tuple[str, str, int], list[dict]] = {}
+    icmp_groups: dict[str, list[dict]] = {}
+    src_portscan_groups: dict[str, list[dict]] = {}
     matched_run_groups: dict[str, list[dict]] = {}
+    injection_groups: dict[tuple[tuple[str, str], int], list[dict]] = {}
 
     for record in records:
         flow_key = record.get("flow_key", {}) if isinstance(record.get("flow_key"), dict) else {}
         src_ip = str(flow_key.get("src_ip", "") or "")
         dst_ip = str(flow_key.get("dst_ip", "") or "")
+        sport = int(flow_key.get("sport", 0) or 0)
         dport = int(flow_key.get("dport", 0) or 0)
         proto = int(flow_key.get("proto", 0) or 0)
         heuristics = set(record.get("heuristics", []) or [])
@@ -1283,12 +1867,22 @@ def correlate_attack_patterns(records: list[dict]) -> list[dict]:
 
         if proto == 6 and "tcp_probe" in heuristics:
             probe_groups.setdefault((src_ip, dst_ip), []).append(record)
+            src_portscan_groups.setdefault(src_ip, []).append(record)
 
         if proto == 6:
             syn_groups.setdefault((src_ip, dst_ip, dport), []).append(record)
+            if dport in AUTH_PORTS and ("auth_probe" in heuristics or "tcp_probe" in heuristics):
+                auth_probe_groups.setdefault((src_ip, dst_ip, dport), []).append(record)
+            service_port = dport if dport in (80, 8080, 8000) else (sport if sport in (80, 8080, 8000) else 0)
+            if service_port:
+                pair_key = (tuple(sorted((src_ip, dst_ip))), service_port)
+                injection_groups.setdefault(pair_key, []).append(record)
 
         if proto == 17:
             udp_groups.setdefault((src_ip, dst_ip, dport), []).append(record)
+
+        if proto == 1:
+            icmp_groups.setdefault(src_ip, []).append(record)
 
     for records_in_group in matched_run_groups.values():
         attack_type = str(records_in_group[0].get("attack_run_label", "") or "").upper()
@@ -1329,9 +1923,52 @@ def correlate_attack_patterns(records: list[dict]) -> list[dict]:
             for record in grouped:
                 promote_real_attack_record(record, "PORTSCAN", "medium", ["tcp_probe_cluster"])
 
+    for src_ip, grouped in src_portscan_groups.items():
+        unique_targets = {(str((record.get("flow_key", {}) or {}).get("dst_ip", "") or ""), int((record.get("flow_key", {}) or {}).get("dport", 0) or 0)) for record in grouped}
+        if len(unique_targets) >= 12:
+            for record in grouped:
+                promote_real_attack_record(record, "PORTSCAN", "high", ["horizontal_scan"])
+
+    for grouped in auth_probe_groups.values():
+        total_attempts = len(grouped)
+        total_syn = sum(int(record.get("syn_flag_count", 0) or 0) for record in grouped)
+        if total_attempts >= 8 or total_syn >= 12:
+            for record in grouped:
+                promote_real_attack_record(record, "BRUTEFORCE", "high" if total_attempts >= 12 else "medium", ["auth_bruteforce"])
+
+    for grouped in injection_groups.values():
+        candidate_records = []
+        strong_hits = 0
+        sum_bwd_seq_dup = 0
+        sum_fwd_ack_dup = 0
+        sum_bwd_ack_dup = 0
+        for record in grouped:
+            bwd_ttl_unique = int(record.get("bwd_ttl_unique_count", 0) or 0)
+            bwd_seq_dup = int(record.get("bwd_tcp_seq_dup_count", 0) or 0)
+            fwd_ack_dup = int(record.get("fwd_tcp_ack_dup_count", 0) or 0)
+            bwd_ack_dup = int(record.get("bwd_tcp_ack_dup_count", 0) or 0)
+            bwd_synack = int(record.get("bwd_synack_count", 0) or 0)
+            bwd_http_status = int(record.get("bwd_http_status_count", 0) or 0)
+            candidate = bwd_ttl_unique >= 2 and (bwd_seq_dup >= 1 or bwd_http_status >= 1 or bwd_synack >= 1)
+            if not candidate:
+                continue
+            candidate_records.append(record)
+            sum_bwd_seq_dup += bwd_seq_dup
+            sum_fwd_ack_dup += fwd_ack_dup
+            sum_bwd_ack_dup += bwd_ack_dup
+            if bwd_http_status >= 2 or bwd_synack >= 2 or bwd_ttl_unique >= 3:
+                strong_hits += 1
+
+        if len(candidate_records) >= 3 and (strong_hits >= 1 or (sum_bwd_seq_dup >= 4 and (sum_fwd_ack_dup >= 8 or sum_bwd_ack_dup >= 12))):
+            severity = "high" if strong_hits >= 1 else "medium"
+            for record in candidate_records:
+                promote_real_attack_record(record, "PACKET-INJECTION", severity, ["packet_injection_cluster"])
+
     for grouped in syn_groups.values():
         total_syn = sum(int(record.get("syn_flag_count", 0) or 0) for record in grouped)
         total_packets = sum(int(record.get("total_fwd_packets", 0) or 0) + int(record.get("total_backward_packets", 0) or 0) for record in grouped)
+        total_ack = sum(int(record.get("ack_flag_count", 0) or 0) for record in grouped)
+        total_bwd = sum(int(record.get("total_backward_packets", 0) or 0) for record in grouped)
         src_ip = str((grouped[0].get("flow_key", {}) or {}).get("src_ip", "") or "") if grouped else ""
         dst_ip = str((grouped[0].get("flow_key", {}) or {}).get("dst_ip", "") or "") if grouped else ""
         dport = int((grouped[0].get("flow_key", {}) or {}).get("dport", 0) or 0) if grouped else 0
@@ -1345,7 +1982,9 @@ def correlate_attack_patterns(records: list[dict]) -> list[dict]:
             ]
         total_syn += sum(int(item.get("syn_flag_count", 0) or 0) for item in recent_syn)
         total_packets += sum(int(item.get("total_fwd_packets", 0) or 0) + int(item.get("total_backward_packets", 0) or 0) for item in recent_syn)
-        if total_syn >= 24 and total_packets >= 24:
+        total_ack += sum(int(item.get("ack_flag_count", 0) or 0) for item in recent_syn)
+        total_bwd += sum(int(item.get("total_backward_packets", 0) or 0) for item in recent_syn)
+        if total_syn >= 40 and total_packets >= 40 and total_ack <= max(3, int(total_syn * 0.2)) and total_bwd <= max(4, int(total_packets * 0.2)):
             for record in grouped:
                 promote_real_attack_record(record, "SYN-FLOOD", "high", ["tcp_syn_burst"])
 
@@ -1376,6 +2015,13 @@ def correlate_attack_patterns(records: list[dict]) -> list[dict]:
         if total_packets >= 24 and total_bps >= 25000 and avg_size >= 250:
             for record in grouped:
                 promote_real_attack_record(record, "UDP-FLOOD", "high", ["udp_packet_rate"])
+
+    for src_ip, grouped in icmp_groups.items():
+        unique_targets = {str((record.get("flow_key", {}) or {}).get("dst_ip", "") or "") for record in grouped if is_privateish_ip(str((record.get("flow_key", {}) or {}).get("dst_ip", "") or ""))}
+        total_packets = sum(int(record.get("total_fwd_packets", 0) or 0) + int(record.get("total_backward_packets", 0) or 0) for record in grouped)
+        if len(unique_targets) >= 6 and total_packets >= 12:
+            for record in grouped:
+                promote_real_attack_record(record, "ICMP-SWEEP", "medium", ["icmp_sweep"])
 
     return records
 
@@ -1419,9 +2065,9 @@ def feature_rows_from_packets(packets) -> list[dict]:
         if IP not in pkt:
             continue
 
-        proto = pkt[IP].proto
-        sport = pkt.sport if TCP in pkt or UDP in pkt else 0
-        dport = pkt.dport if TCP in pkt or UDP in pkt else 0
+        proto = int(pkt[IP].proto)
+        sport = int(pkt.sport) if TCP in pkt or UDP in pkt else 0
+        dport = int(pkt.dport) if TCP in pkt or UDP in pkt else 0
         ip_pair = tuple(sorted((pkt[IP].src, pkt[IP].dst)))
         port_pair = tuple(sorted((sport, dport)))
         flow_key = ip_pair + port_pair + (proto,)
@@ -1453,45 +2099,66 @@ def feature_rows_from_packets(packets) -> list[dict]:
                 "bwd_psh_flags": 0,
                 "fwd_urg_flags": 0,
                 "bwd_urg_flags": 0,
+                "fwd_synack_count": 0,
+                "bwd_synack_count": 0,
                 "act_data_pkt_fwd": 0,
                 "init_win_bytes_forward": 0,
                 "init_win_bytes_backward": 0,
+                "fwd_ttls": set(),
+                "bwd_ttls": set(),
+                "fwd_seqs": [],
+                "bwd_seqs": [],
+                "fwd_acks": [],
+                "bwd_acks": [],
+                "fwd_http_statuses": set(),
+                "bwd_http_statuses": set(),
             }
 
         flow = current_flows[flow_key]
-        flow["timestamps"].append(float(pkt.time))
+        timestamp = float(pkt.time)
+        flow["timestamps"].append(timestamp)
 
         pkt_len = len(pkt)
-        header_len = 0
-        if IP in pkt:
-            ip_ihl = getattr(pkt[IP], "ihl", None) or 5
-            header_len += ip_ihl * 4
+        ip_ihl = int(getattr(pkt[IP], "ihl", 5) or 5)
+        header_len = ip_ihl * 4
         if TCP in pkt:
-            tcp_dataofs = getattr(pkt[TCP], "dataofs", None) or 5
+            tcp_dataofs = int(getattr(pkt[TCP], "dataofs", 5) or 5)
             header_len += tcp_dataofs * 4
         elif UDP in pkt:
             header_len += 8
 
         payload_len = pkt_len - header_len if pkt_len > header_len else 0
+        ttl = int(getattr(pkt[IP], "ttl", 0) or 0)
+        is_forward = pkt[IP].src == flow["flow_initiator_ip"]
 
-        if pkt[IP].src == flow["flow_initiator_ip"]:
+        if is_forward:
             flow["fwd_pkt_lengths"].append(pkt_len)
-            flow["fwd_timestamps"].append(float(pkt.time))
+            flow["fwd_timestamps"].append(timestamp)
             flow["fwd_header_lengths"].append(header_len)
+            flow["fwd_ttls"].add(ttl)
             if payload_len > 0:
                 flow["act_data_pkt_fwd"] += 1
             if TCP in pkt:
-                flow["init_win_bytes_forward"] = pkt[TCP].window
+                flow["init_win_bytes_forward"] = int(getattr(pkt[TCP], "window", 0) or 0)
         else:
             flow["bwd_pkt_lengths"].append(pkt_len)
-            flow["bwd_timestamps"].append(float(pkt.time))
+            flow["bwd_timestamps"].append(timestamp)
             flow["bwd_header_lengths"].append(header_len)
+            flow["bwd_ttls"].add(ttl)
             if TCP in pkt:
-                flow["init_win_bytes_backward"] = pkt[TCP].window
+                flow["init_win_bytes_backward"] = int(getattr(pkt[TCP], "window", 0) or 0)
 
         if TCP in pkt:
-            flags = pkt[TCP].flags
-            is_forward = pkt[IP].src == flow["flow_initiator_ip"]
+            flags = str(pkt[TCP].flags)
+            seq = int(getattr(pkt[TCP], "seq", 0) or 0)
+            ack = int(getattr(pkt[TCP], "ack", 0) or 0)
+            if is_forward:
+                flow["fwd_seqs"].append(seq)
+                flow["fwd_acks"].append(ack)
+            else:
+                flow["bwd_seqs"].append(seq)
+                flow["bwd_acks"].append(ack)
+
             if "F" in flags:
                 flow["fin_flag_count"] += 1
             if "S" in flags:
@@ -1503,6 +2170,8 @@ def feature_rows_from_packets(packets) -> list[dict]:
                 flow["fwd_psh_flags" if is_forward else "bwd_psh_flags"] += 1
             if "A" in flags:
                 flow["ack_flag_count"] += 1
+                if "S" in flags:
+                    flow["fwd_synack_count" if is_forward else "bwd_synack_count"] += 1
             if "U" in flags:
                 flow["urg_flag_count"] += 1
                 flow["fwd_urg_flags" if is_forward else "bwd_urg_flags"] += 1
@@ -1510,6 +2179,18 @@ def feature_rows_from_packets(packets) -> list[dict]:
                 flow["ece_flag_count"] += 1
             if "C" in flags:
                 flow["cwe_flag_count"] += 1
+
+            if payload_len > 0 and Raw is not None and pkt.haslayer(Raw):
+                try:
+                    payload = bytes(pkt[Raw].load[:64])
+                    if payload.startswith(b"HTTP/"):
+                        parts = payload.split(None, 2)
+                        if len(parts) >= 2:
+                            status_code = int(parts[1].decode("ascii", errors="ignore"))
+                            if 100 <= status_code <= 599:
+                                flow["fwd_http_statuses" if is_forward else "bwd_http_statuses"].add(status_code)
+                except Exception:
+                    pass
 
     def get_iat_stats(times):
         if len(times) > 1:
@@ -1542,6 +2223,11 @@ def feature_rows_from_packets(packets) -> list[dict]:
                 current_active_start = t
             last_pkt_time = t
         active_times.append((last_pkt_time - current_active_start) * 1_000_000)
+
+        fwd_seq_dup_count = max(0, len(flow_data["fwd_seqs"]) - len(set(flow_data["fwd_seqs"])))
+        bwd_seq_dup_count = max(0, len(flow_data["bwd_seqs"]) - len(set(flow_data["bwd_seqs"])))
+        fwd_ack_dup_count = max(0, len(flow_data["fwd_acks"]) - len(set(flow_data["fwd_acks"])))
+        bwd_ack_dup_count = max(0, len(flow_data["bwd_acks"]) - len(set(flow_data["bwd_acks"])))
 
         row = {
             "src_ip": flow_data["src_ip"],
@@ -1585,6 +2271,16 @@ def feature_rows_from_packets(packets) -> list[dict]:
             "act_data_pkt_fwd": flow_data["act_data_pkt_fwd"],
             "init_win_bytes_forward": flow_data["init_win_bytes_forward"],
             "init_win_bytes_backward": flow_data["init_win_bytes_backward"],
+            "fwd_ttl_unique_count": len(flow_data["fwd_ttls"]),
+            "bwd_ttl_unique_count": len(flow_data["bwd_ttls"]),
+            "fwd_tcp_seq_dup_count": fwd_seq_dup_count,
+            "bwd_tcp_seq_dup_count": bwd_seq_dup_count,
+            "fwd_tcp_ack_dup_count": fwd_ack_dup_count,
+            "bwd_tcp_ack_dup_count": bwd_ack_dup_count,
+            "fwd_synack_count": flow_data["fwd_synack_count"],
+            "bwd_synack_count": flow_data["bwd_synack_count"],
+            "fwd_http_status_count": len(flow_data["fwd_http_statuses"]),
+            "bwd_http_status_count": len(flow_data["bwd_http_statuses"]),
             "active_mean": float(np.mean(active_times)) if active_times else 0.0,
             "active_std": float(np.std(active_times)) if len(active_times) > 1 else 0.0,
             "active_max": float(np.max(active_times)) if active_times else 0.0,
@@ -1641,13 +2337,16 @@ def feature_rows_from_packets(packets) -> list[dict]:
     return rows
 
 
-def score_rows(rows: list[dict]) -> list[dict]:
+def score_rows(rows: list[dict], fast_mode: bool = False) -> list[dict]:
     if not rows:
         return []
 
     if MODELS is not None and PREDICT_ALL is not None:
         try:
-            preds = PREDICT_ALL(MODELS, pd.DataFrame(rows))
+            models_for_prediction = MODELS
+            if fast_mode:
+                models_for_prediction = {key: value for key, value in MODELS.items() if key != "gbdt"}
+            preds = PREDICT_ALL(models_for_prediction, pd.DataFrame(rows))
         except Exception as exc:
             print(f"Prediction error: {exc}")
             preds = [{"ensemble_risk": "error", "ae_anomaly": False, "iso_risk": "error", "kmeans_risk": "error", "rf_labels": "ERROR"} for _ in rows]
@@ -1701,10 +2400,21 @@ def score_rows(rows: list[dict]) -> list[dict]:
             "flow_packets/s": float(flow_info.get("flow_packets/s", 0) or 0),
             "average_packet_size": float(flow_info.get("average_packet_size", 0) or 0),
             "syn_flag_count": int(flow_info.get("syn_flag_count", 0) or 0),
+            "fwd_ttl_unique_count": int(flow_info.get("fwd_ttl_unique_count", 0) or 0),
+            "bwd_ttl_unique_count": int(flow_info.get("bwd_ttl_unique_count", 0) or 0),
+            "fwd_tcp_seq_dup_count": int(flow_info.get("fwd_tcp_seq_dup_count", 0) or 0),
+            "bwd_tcp_seq_dup_count": int(flow_info.get("bwd_tcp_seq_dup_count", 0) or 0),
+            "fwd_tcp_ack_dup_count": int(flow_info.get("fwd_tcp_ack_dup_count", 0) or 0),
+            "bwd_tcp_ack_dup_count": int(flow_info.get("bwd_tcp_ack_dup_count", 0) or 0),
+            "fwd_synack_count": int(flow_info.get("fwd_synack_count", 0) or 0),
+            "bwd_synack_count": int(flow_info.get("bwd_synack_count", 0) or 0),
+            "fwd_http_status_count": int(flow_info.get("fwd_http_status_count", 0) or 0),
+            "bwd_http_status_count": int(flow_info.get("bwd_http_status_count", 0) or 0),
             "severity": severity,
             "heuristics": heuristics,
             "candidate_block_ip": candidate_ip,
             "model_votes": pred["model_votes"],
+            "confidence_score": float((pred.get("model_votes", {}) or {}).get("confidence_score", 0.0)),
             "raw_model_outputs": raw_pred,
             **pred,
         }
@@ -1786,6 +2496,11 @@ def analysis_snapshot() -> dict:
         alerts = list(STATE.alerts)
         blocked_ips = dict(STATE.blocked_ips)
         attack_runs = list(STATE.attack_runs)
+        pcap_runs = [
+            dict(run)
+            for run in STATE.attack_runs
+            if run.get("run_kind") == "pcap_replay" and int(run.get("replay_version", 0) or 0) == PCAP_REPLAY_VERSION
+        ]
         packet_debug = list(STATE.packet_debug)
         capture_stats = dict(STATE.capture_stats)
         healed_events = list(STATE.healed_events)
@@ -1820,6 +2535,7 @@ def analysis_snapshot() -> dict:
             "capture_stats": capture_stats,
             "packet_debug": packet_debug,
             "attack_runs": attack_runs,
+            "pcap_runs": pcap_runs,
             "healing_enabled": healing_enabled,
             "healing_window_seconds": healing_window_seconds,
             "healing_queue": healing_queue,
@@ -1972,11 +2688,28 @@ def analysis_snapshot() -> dict:
         "capture_stats": capture_stats,
         "packet_debug": packet_debug,
         "attack_runs": attack_runs,
+        "pcap_runs": pcap_runs,
         "healing_enabled": healing_enabled,
         "healing_window_seconds": healing_window_seconds,
         "healing_queue": healing_queue,
         "healing_history": healed_events,
     }
+
+
+def pcap_run_snapshot(replay_id: str | None = None, limit: int = 12) -> dict:
+    maintain_healing()
+    with STATE.lock:
+        pcap_runs = [
+            dict(run)
+            for run in STATE.attack_runs
+            if run.get("run_kind") == "pcap_replay" and int(run.get("replay_version", 0) or 0) == PCAP_REPLAY_VERSION
+        ]
+    if replay_id:
+        for run in pcap_runs:
+            if run.get("id") == replay_id:
+                return {"run": to_json_safe(run), "runs": to_json_safe(pcap_runs[:limit])}
+        return {"run": None, "runs": to_json_safe(pcap_runs[:limit])}
+    return {"run": to_json_safe(pcap_runs[0]) if pcap_runs else None, "runs": to_json_safe(pcap_runs[:limit])}
 
 
 @app.route("/")
@@ -2197,6 +2930,13 @@ def analysis():
     return jsonify(analysis_snapshot())
 
 
+@app.route("/pcap_status")
+def pcap_status():
+    replay_id = str(request.args.get("id") or "").strip() or None
+    limit = max(1, min(20, int(request.args.get("limit", 12))))
+    return jsonify(pcap_run_snapshot(replay_id=replay_id, limit=limit))
+
+
 @app.route("/clear_results", methods=["POST"])
 def clear_results():
     with STATE.lock:
@@ -2206,6 +2946,44 @@ def clear_results():
         STATE.capture_stats.clear()
     persist_results()
     return jsonify({"status": "cleared"})
+
+
+@app.route("/clear_pcap_replays", methods=["POST"])
+def clear_pcap_replays():
+    removed_runs = 0
+    removed_results = 0
+    removed_alerts = 0
+    with STATE.lock:
+        kept_runs = deque(maxlen=STATE.attack_runs.maxlen)
+        for run in STATE.attack_runs:
+            if run.get("run_kind") == "pcap_replay":
+                removed_runs += 1
+            else:
+                kept_runs.append(run)
+        STATE.attack_runs = kept_runs
+
+        kept_results = deque(maxlen=STATE.results.maxlen)
+        for record in STATE.results:
+            if str(record.get("traffic_source", "") or "").lower() == "pcap_replay" or str(record.get("attack_run_label", "") or "").lower() == "pcap replay":
+                removed_results += 1
+            else:
+                kept_results.append(record)
+        STATE.results = kept_results
+
+        kept_alerts = deque(maxlen=STATE.alerts.maxlen)
+        for alert in STATE.alerts:
+            if str(alert.get("traffic_source", "") or "").lower() == "pcap_replay" or str(alert.get("attack_run_label", "") or "").lower() == "pcap replay":
+                removed_alerts += 1
+            else:
+                kept_alerts.append(alert)
+        STATE.alerts = kept_alerts
+    persist_results()
+    return jsonify({
+        "status": "cleared",
+        "removed_runs": removed_runs,
+        "removed_results": removed_results,
+        "removed_alerts": removed_alerts,
+    })
 
 
 @app.route("/block_ip", methods=["POST"])
@@ -2333,15 +3111,18 @@ def replay_pcap_route():
         packet_limit = int(payload.get("packet_limit") or 0) or None
         loop_count = int(payload.get("loop_count") or 0) or 1
         packets_per_second = float(payload.get("packets_per_second") or 0) or None
+        send_packets = bool(payload.get("send_packets", False))
         replay_id = f"pcap-{int(now_ts() * 1000)}"
         started_ts = now_ts()
 
         replay_run = {
             "id": replay_id,
             "run_kind": "pcap_replay",
+            "replay_version": PCAP_REPLAY_VERSION,
             "attack_type": "pcap_replay",
             "attack_label": "PCAP Replay",
             "pcap_name": pcap_name,
+            **pcap_profile_info(pcap_name),
             "target_ip": None,
             "target_port": None,
             "proto": None,
@@ -2354,6 +3135,9 @@ def replay_pcap_route():
             "detection_count": 0,
             "matched_flows": 0,
             "attack_candidate_flows": 0,
+            "suspicious_pair_count": 0,
+            "elevated_pair_count": 0,
+            "total_pair_count": 0,
             "total_flow_count": 0,
             "packet_count": 0,
             "loop_count": loop_count,
@@ -2364,24 +3148,32 @@ def replay_pcap_route():
             "target_iface": requested_iface or STATE.selected_iface,
             "replay_status": "running",
             "replay_error": None,
+            "replay_mode": "wire" if send_packets else "analysis_only",
+            "detection_rate_pct": 0.0,
+            "elevated_detection_rate_pct": 0.0,
+            "elevated_pair_rate_pct": 0.0,
+            "total_pair_elevated_rate_pct": 0.0,
+            "suspicious_pair_rate_pct": 0.0,
         }
         with STATE.lock:
             STATE.attack_runs.appendleft(replay_run)
         worker = threading.Thread(
             target=process_pcap_replay_async,
-            args=(replay_id, pcap_name, requested_iface, packet_limit, loop_count, packets_per_second, started_ts),
+            args=(replay_id, pcap_name, requested_iface, packet_limit, loop_count, packets_per_second, send_packets, started_ts),
             daemon=True,
         )
         worker.start()
         persist_results()
         return jsonify({
             "status": "queued",
+            "replay_id": replay_id,
             "replay_run_id": replay_id,
             "pcap_name": pcap_name,
             "iface": requested_iface or STATE.selected_iface,
             "packet_limit": packet_limit,
             "loop_count": loop_count,
             "packets_per_second": packets_per_second,
+            "send_packets": send_packets,
             "replay_status": "running",
         })
     except Exception as exc:

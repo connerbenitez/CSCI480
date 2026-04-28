@@ -26,6 +26,17 @@ except Exception:
 from model_defs import Autoencoder, FlowGNN, PPOPolicyNetwork, knn_edge_index
 
 
+GENERIC_NON_ATTACK_LABELS = {
+    "",
+    "BENIGN",
+    "ANOMALOUS-TRAFFIC",
+    "ANOMALOUS-UDP",
+    "ICMP-ANOMALY",
+    "MODELS_UNAVAILABLE",
+    "ERROR",
+}
+
+
 def artifact_path(directory: Path, filename: str) -> Path:
     base = directory / filename
     optimized = directory / f"{base.stem}_optimized{base.suffix}"
@@ -99,6 +110,14 @@ def preprocess_flows(df):
 def load_models():
     """Load all models and preprocessors. Returns dict. Called once."""
     models = {}
+    enable_ae = str(os.environ.get("CSCI480_ENABLE_AE", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
+    training_report = {}
+    report_path = ml_dir / "training_report.json"
+    if report_path.exists():
+        try:
+            training_report = joblib.load(report_path) if report_path.suffix == ".pkl" else __import__("json").loads(report_path.read_text(encoding="utf-8"))
+        except Exception:
+            training_report = {}
 
     def load_ae():
         ae_dir = ml_dir / 'AutoEncoderDumps'
@@ -150,9 +169,6 @@ def load_models():
 
     core_errors = []
     for key, loader, description in (
-        ('ae', load_ae, 'autoencoder bundle'),
-        ('iso', load_iso, 'isolation forest bundle'),
-        ('kmeans', load_kmeans, 'kmeans bundle'),
         ('rf', load_rf, 'random forest bundle'),
     ):
         try:
@@ -164,7 +180,26 @@ def load_models():
     if not models:
         raise RuntimeError("; ".join(core_errors) if core_errors else "No ML models could be loaded")
 
+    if enable_ae:
+        optional_ae = load_optional(load_ae, 'autoencoder bundle')
+        if optional_ae:
+            models['ae'] = optional_ae
+
     # Optional models should not prevent the core bundle from starting.
+    iso_metrics = training_report.get("isolation_forest", {}) if isinstance(training_report, dict) else {}
+    iso_dir = ml_dir / 'IsoDumps'
+    if artifact_path(iso_dir, 'iso_forest_model.pkl').exists() and not iso_metrics.get("skipped") and float(iso_metrics.get("roc_auc", 0.0) or 0.0) >= 0.6:
+        optional_iso = load_optional(load_iso, 'isolation forest bundle')
+        if optional_iso:
+            models['iso'] = optional_iso
+
+    kmeans_metrics = training_report.get("kmeans", {}) if isinstance(training_report, dict) else {}
+    k_dir = ml_dir / 'KmeansDumps'
+    if artifact_path(k_dir, 'kmeans_model.pkl').exists() and not kmeans_metrics.get("skipped") and float(kmeans_metrics.get("roc_auc", 0.0) or 0.0) >= 0.7:
+        optional_kmeans = load_optional(load_kmeans, 'kmeans bundle')
+        if optional_kmeans:
+            models['kmeans'] = optional_kmeans
+
     gbdt_dir = ml_dir / 'GradientBoostedDumps'
     if artifact_path(gbdt_dir, 'gbdt_model_multiclass.pkl').exists():
         optional_gbdt = load_optional(
@@ -410,7 +445,7 @@ def predict_gnn(models, X_orig):
 def label_is_non_benign(label):
     if label is None:
         return False
-    return str(label).upper() != 'BENIGN'
+    return str(label).upper() not in GENERIC_NON_ATTACK_LABELS
 
 
 def weighted_ensemble_risk(preds):
@@ -419,78 +454,97 @@ def weighted_ensemble_risk(preds):
     km_risk = str(preds.get('kmeans_risk', 'normal')).lower()
     rf_suspicious = label_is_non_benign(preds.get('rf_labels'))
     gbdt_suspicious = label_is_non_benign(preds.get('gbdt_labels'))
+    ppo_risk = str(preds.get('ppo_risk', 'normal')).lower()
+    gnn_label = str(preds.get('gnn_label', 'normal')).lower()
+    gnn_attack_prob = float(preds.get('gnn_attack_prob', 0) or 0)
+    ppo_suspicious = ppo_risk in ('medium', 'high', 'attack')
+    gnn_suspicious = gnn_label == 'attack' and gnn_attack_prob >= 0.6
 
     anomaly_votes = sum(
         [
             ae_risk in ('medium', 'high'),
-            iso_risk == 'high',
-            km_risk == 'high',
+            iso_risk in ('medium', 'high'),
+            km_risk in ('medium', 'high'),
+            ppo_suspicious,
+            gnn_suspicious,
         ]
     )
 
     if rf_suspicious and gbdt_suspicious:
         return 'high'
-    if rf_suspicious or gbdt_suspicious:
+    if (rf_suspicious or gbdt_suspicious) and (ppo_suspicious or gnn_suspicious or anomaly_votes >= 1):
+        return 'high'
+    if rf_suspicious and gbdt_suspicious:
         return 'medium'
+    if anomaly_votes >= 4:
+        return 'high'
     if anomaly_votes >= 3:
+        return 'medium'
+    if anomaly_votes >= 2 and (ppo_suspicious or gnn_suspicious):
         return 'low'
-    if (ae_risk in ('medium', 'high')) and (iso_risk == 'high' or km_risk == 'high'):
+    if (ae_risk in ('medium', 'high')) and (iso_risk in ('medium', 'high') or km_risk in ('medium', 'high')):
         return 'low'
     return 'normal'
+
+def _pick_row_value(value, idx, size):
+    if isinstance(value, list):
+        return value[idx] if idx < len(value) else None
+    if isinstance(value, np.ndarray):
+        return value[idx] if idx < len(value) else None
+    return value
+
 
 def predict_all(models, flows_df):
     """Main entry: df -> predictions dict/list."""
     df_clean = preprocess_flows(flows_df)
-    gnn_batch_preds = predict_gnn(models, df_clean) if 'gnn' in models else None
-    
+    row_count = len(df_clean)
+    if row_count == 0:
+        return []
+
+    batch_preds = {}
+    numeric_features = df_clean.select_dtypes(include=np.number).columns
+    X_num = df_clean[numeric_features]
+
+    if 'ae' in models:
+        corr_matrix = X_num.corr().abs()
+        upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+        to_drop = [col for col in upper.columns if any(upper[col] > 0.9)]
+        X_ae = X_num.drop(columns=to_drop)
+        ae_feature_names = expected_features(models['ae'], 'feature_names', 'scaler')
+        if ae_feature_names:
+            X_ae = align_features(X_ae, ae_feature_names)
+        X_ae_scaled = models['ae']['scaler'].transform(X_ae.to_numpy(dtype=float))
+        batch_preds.update(predict_ae(models, X_ae_scaled))
+    else:
+        batch_preds.update({'ae_score': [None] * row_count, 'ae_anomaly': [False] * row_count, 'ae_risk': ['error'] * row_count})
+
+    if 'iso' in models:
+        batch_preds.update(predict_unsupervised(models, df_clean, 'iso'))
+    else:
+        batch_preds.update({'iso_score': [None] * row_count, 'iso_risk': ['error'] * row_count})
+
+    if 'kmeans' in models:
+        batch_preds.update(predict_unsupervised(models, df_clean, 'kmeans'))
+    else:
+        batch_preds.update({'kmeans_score': [None] * row_count, 'kmeans_risk': ['error'] * row_count})
+
+    if 'rf' in models:
+        batch_preds.update(predict_rf(models, df_clean))
+    else:
+        batch_preds.update({'rf_labels': ['MODELS_UNAVAILABLE'] * row_count, 'rf_probs': [[] for _ in range(row_count)]})
+
+    if 'gbdt' in models:
+        batch_preds.update(predict_gbdt(models, df_clean))
+    if 'ppo' in models:
+        batch_preds.update(predict_ppo(models, df_clean))
+    if 'gnn' in models:
+        batch_preds.update(predict_gnn(models, df_clean))
+
     results = []
-    for idx, row in df_clean.iterrows():
-        flow_df = pd.DataFrame([row])
-        
-        preds = {}
-        
-        numeric_features = flow_df.select_dtypes(include=np.number).columns
-        X_num = flow_df[numeric_features]
-        
-        if 'ae' in models:
-            corr_matrix = X_num.corr().abs()
-            upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-            to_drop = [col for col in upper.columns if any(upper[col] > 0.9)]
-            X_ae = X_num.drop(columns=to_drop)
-            ae_feature_names = expected_features(models['ae'], 'feature_names', 'scaler')
-            if ae_feature_names:
-                X_ae = align_features(X_ae, ae_feature_names)
-            X_ae_scaled = models['ae']['scaler'].transform(X_ae.to_numpy(dtype=float))
-            preds.update(predict_ae(models, X_ae_scaled))
-        else:
-            preds.update({'ae_score': None, 'ae_anomaly': False, 'ae_risk': 'error'})
-
-        if 'iso' in models:
-            preds.update(predict_unsupervised(models, flow_df, 'iso'))
-        else:
-            preds.update({'iso_score': None, 'iso_risk': 'error'})
-
-        if 'kmeans' in models:
-            preds.update(predict_unsupervised(models, flow_df, 'kmeans'))
-        else:
-            preds.update({'kmeans_score': None, 'kmeans_risk': 'error'})
-
-        if 'rf' in models:
-            preds.update(predict_rf(models, flow_df))
-        else:
-            preds.update({'rf_labels': 'MODELS_UNAVAILABLE', 'rf_probs': []})
-        if 'gbdt' in models:
-            preds.update(predict_gbdt(models, flow_df))
-        if 'ppo' in models:
-            preds.update(predict_ppo(models, flow_df))
-        if gnn_batch_preds:
-            preds['gnn_label'] = gnn_batch_preds['gnn_label'][len(results)] if isinstance(gnn_batch_preds['gnn_label'], list) else gnn_batch_preds['gnn_label']
-            preds['gnn_attack_prob'] = gnn_batch_preds['gnn_attack_prob'][len(results)] if isinstance(gnn_batch_preds['gnn_attack_prob'], list) else gnn_batch_preds['gnn_attack_prob']
-        
+    for idx in range(row_count):
+        preds = {key: _pick_row_value(value, idx, row_count) for key, value in batch_preds.items()}
         preds['ensemble_risk'] = weighted_ensemble_risk(preds)
-        
         results.append(preds)
-    
     return results
 
 if __name__ == '__main__':

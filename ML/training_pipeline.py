@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -38,6 +39,23 @@ DATASET_FILES = [
 
 DATASET_BASE_URL = "https://huggingface.co/datasets/c01dsnap/CIC-IDS2017/resolve/main"
 
+CSE_CIC_IDS2018_BASE_URL = "https://cse-cic-ids2018.s3.ca-central-1.amazonaws.com/Processed%20Traffic%20Data%20for%20ML%20Algorithms"
+
+CSE_CIC_IDS2018_FILES = [
+    "Thuesday-20-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Wednesday-14-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Thursday-15-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Friday-16-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Wednesday-21-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Thursday-22-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Friday-23-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Wednesday-28-02-2018_TrafficForML_CICFlowMeter.csv",
+    "Thursday-01-03-2018_TrafficForML_CICFlowMeter.csv",
+    "Friday-02-03-2018_TrafficForML_CICFlowMeter.csv",
+]
+
+CSV_CHUNK_ROWS = 200_000
+
 FIXED_DROP_COLS = [
     "fwd_header_length.1",
     "fwd_avg_bytes/bulk",
@@ -60,20 +78,35 @@ LABEL_REPLACEMENTS = {
     "web attack � sql injection": "Web Attack - SQL Injection",
     "dos slowloris": "DoS Slowloris",
     "dos slowhttptest": "DoS Slowhttptest",
+    "ssh-bruteforce": "SSH-BruteForce",
+    "ssh bruteforce": "SSH-BruteForce",
+    "ftp-bruteforce": "FTP-BruteForce",
+    "ftp bruteforce": "FTP-BruteForce",
+    "brute force -web": "Brute Force -Web",
+    "brute force -xss": "Brute Force -XSS",
+    "dos attacks-hulk": "DoS Hulk",
+    "dos attacks-goldeneye": "DoS GoldenEye",
+    "dos attacks-slowloris": "DoS Slowloris",
+    "dos attacks-slowhttptest": "DoS Slowhttptest",
+    "ddos attacks-loic-http": "DDoS LOIC-HTTP",
+    "ddos attack-loic-udp": "DDoS LOIC-UDP",
+    "ddos attack-hoic": "DDoS HOIC",
+    "infilteration": "Infiltration",
+    "label": "HEADER_ROW",
 }
 
 
-def download_dataset(target_dir: Path, overwrite: bool = False) -> list[Path]:
+def download_dataset_files(target_dir: Path, base_url: str, filenames: list[str], overwrite: bool = False) -> list[Path]:
     target_dir.mkdir(parents=True, exist_ok=True)
     downloaded = []
 
-    for filename in DATASET_FILES:
+    for filename in filenames:
         target = target_dir / filename
         if target.exists() and not overwrite:
             downloaded.append(target)
             continue
 
-        url = f"{DATASET_BASE_URL}/{filename}?download=true"
+        url = f"{base_url}/{filename}?download=true"
         with requests.get(url, stream=True, timeout=120) as response:
             response.raise_for_status()
             with target.open("wb") as handle:
@@ -85,11 +118,31 @@ def download_dataset(target_dir: Path, overwrite: bool = False) -> list[Path]:
     return downloaded
 
 
+def download_dataset(target_dir: Path, overwrite: bool = False) -> list[Path]:
+    return download_dataset_files(target_dir, DATASET_BASE_URL, DATASET_FILES, overwrite=overwrite)
+
+
+def download_cse_cic_ids2018(target_dir: Path, overwrite: bool = False) -> list[Path]:
+    return download_dataset_files(target_dir, CSE_CIC_IDS2018_BASE_URL, CSE_CIC_IDS2018_FILES, overwrite=overwrite)
+
+
 def read_csv_sample(path: Path, sample_rows: int | None) -> pd.DataFrame:
-    df = pd.read_csv(path, encoding="cp1252", low_memory=False)
-    if sample_rows and len(df) > sample_rows:
-        df = df.sample(n=sample_rows, random_state=42)
-    return df
+    if sample_rows is None:
+        return pd.read_csv(path, encoding="cp1252", low_memory=False)
+
+    reservoir = None
+    for chunk_idx, chunk in enumerate(pd.read_csv(path, encoding="cp1252", low_memory=False, chunksize=CSV_CHUNK_ROWS)):
+        chunk = chunk.sample(n=min(len(chunk), sample_rows), random_state=42 + chunk_idx)
+        if reservoir is None:
+            reservoir = chunk.reset_index(drop=True)
+        else:
+            reservoir = pd.concat([reservoir, chunk], ignore_index=True)
+        if len(reservoir) > sample_rows:
+            reservoir = reservoir.sample(n=sample_rows, random_state=42 + chunk_idx).reset_index(drop=True)
+
+    if reservoir is None:
+        return pd.DataFrame()
+    return reservoir
 
 
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -102,6 +155,11 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.replace(["Infinity", "NaN", "nan"], np.nan, inplace=True)
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+    text_like_cols = {"label", "timestamp", "flow_id", "src_ip", "dst_ip"}
+    object_cols = [c for c in df.select_dtypes(include=["object"]).columns if c not in text_like_cols]
+    for col in object_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
     for col in ["flow_bytes/s", "flow_packets/s"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -111,6 +169,8 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
     df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
     df[numeric_cols] = df[numeric_cols].astype(np.float32)
+    if "label" in df.columns:
+        df = df[df["label"].astype(str).str.strip().str.lower() != "label"]
     df.drop_duplicates(inplace=True)
     df.drop(columns=[c for c in FIXED_DROP_COLS if c in df.columns], inplace=True, errors="ignore")
 
@@ -127,8 +187,14 @@ def normalize_labels(series: pd.Series) -> pd.Series:
     normalized = normalized.str.replace("brute force", "Brute Force", regex=False)
     normalized = normalized.str.replace("slowloris", "Slowloris", regex=False)
     normalized = normalized.str.replace("slowhttptest", "Slowhttptest", regex=False)
+    normalized = normalized.str.replace("goldeneye", "GoldenEye", regex=False)
+    normalized = normalized.str.replace("hulk", "Hulk", regex=False)
+    normalized = normalized.str.replace("hoic", "HOIC", regex=False)
+    normalized = normalized.str.replace("loic-http", "LOIC-HTTP", regex=False)
+    normalized = normalized.str.replace("loic-udp", "LOIC-UDP", regex=False)
     normalized = normalized.str.replace("web attack - ", "Web Attack - ", regex=False)
     normalized = normalized.str.replace("dos ", "DoS ", regex=False)
+    normalized = normalized.str.replace("dDoS ", "DDoS ", regex=False)
     normalized = normalized.str.replace("bot", "Bot", regex=False)
     normalized = normalized.str.replace("infiltration", "Infiltration", regex=False)
     normalized = normalized.str.replace("heartbleed", "Heartbleed", regex=False)
@@ -136,6 +202,14 @@ def normalize_labels(series: pd.Series) -> pd.Series:
     normalized = normalized.str.replace("ddos", "DDoS", regex=False)
     normalized = normalized.str.replace("ftp-patator", "FTP-Patator", regex=False)
     normalized = normalized.str.replace("ssh-patator", "SSH-Patator", regex=False)
+    normalized = normalized.str.replace("ftp-bruteforce", "FTP-BruteForce", regex=False)
+    normalized = normalized.str.replace("ssh-bruteforce", "SSH-BruteForce", regex=False)
+    normalized = normalized.str.replace("brute force -web", "Brute Force -Web", regex=False)
+    normalized = normalized.str.replace("brute force -xss", "Brute Force -XSS", regex=False)
+    normalized = normalized.str.replace("dos attacks-", "DoS ", regex=False)
+    normalized = normalized.str.replace("ddos attacks-loic-http", "DDoS LOIC-HTTP", regex=False)
+    normalized = normalized.str.replace("ddos attack-loic-udp", "DDoS LOIC-UDP", regex=False)
+    normalized = normalized.str.replace("ddos attack-hoic", "DDoS HOIC", regex=False)
     normalized = normalized.str.replace("benign", "BENIGN", regex=False)
     return normalized
 
@@ -150,7 +224,48 @@ def load_dataset(dataset_dir: Path, per_file_rows: int | None = None) -> pd.Data
         raise ValueError("Expected a 'label' column in CICIDS2017 CSVs.")
 
     df["label"] = normalize_labels(df["label"])
+    df = df[df["label"] != "HEADER_ROW"].copy()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) > 0:
+        df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
+        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+        df[numeric_cols] = df[numeric_cols].astype(np.float32)
     return df
+
+
+def configure_system_acceleration() -> dict[str, object]:
+    cpu_count = os.cpu_count() or 1
+    cpu_threads = max(1, cpu_count)
+    os.environ.setdefault("OMP_NUM_THREADS", str(cpu_threads))
+    os.environ.setdefault("MKL_NUM_THREADS", str(cpu_threads))
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", str(cpu_threads))
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", str(cpu_threads))
+
+    try:
+        torch.set_num_threads(cpu_threads)
+    except Exception:
+        pass
+    try:
+        torch.set_num_interop_threads(max(1, min(8, max(1, cpu_threads // 2))))
+    except Exception:
+        pass
+
+    cuda_available = bool(torch.cuda.is_available())
+    device = torch.device("cuda" if cuda_available else "cpu")
+    if cuda_available:
+        torch.backends.cudnn.benchmark = True
+
+    return {
+        "cpu_threads": cpu_threads,
+        "cuda_available": cuda_available,
+        "device": str(device),
+        "gpu_name": torch.cuda.get_device_name(0) if cuda_available else None,
+    }
+
+
+def tensor_batches(tensor: torch.Tensor, batch_size: int):
+    for start in range(0, tensor.size(0), batch_size):
+        yield tensor[start : start + batch_size]
 
 
 def select_numeric_features(df: pd.DataFrame, drop_high_corr: bool = True) -> tuple[pd.DataFrame, list[str]]:
@@ -190,7 +305,7 @@ def torch_save_atomic(obj, path: Path) -> None:
 
 def joblib_dump_atomic(obj, path: Path) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    joblib.dump(obj, tmp_path)
+    joblib.dump(obj, tmp_path, compress=3)
     try:
         tmp_path.replace(path)
     except PermissionError:
@@ -270,6 +385,8 @@ def train_autoencoder(
     batch_size: int,
 ) -> dict:
     ensure_dir(dump_dir)
+    accel = configure_system_acceleration()
+    device = torch.device(accel["device"])
     if len(X_train) > 600000:
         rng = np.random.default_rng(42)
         X_train = X_train[rng.choice(len(X_train), size=600000, replace=False)]
@@ -277,15 +394,16 @@ def train_autoencoder(
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
 
-    model = Autoencoder(input_dim=X_train_scaled.shape[1], hidden_dim=hidden_dim_for_features(X_train_scaled.shape[1]))
+    model = Autoencoder(input_dim=X_train_scaled.shape[1], hidden_dim=hidden_dim_for_features(X_train_scaled.shape[1])).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32)
-    val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32)
+    train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32, device=device)
+    val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32, device=device)
+    eval_batch_size = max(batch_size, 8192 if device.type == "cuda" else 2048)
 
     model.train()
     for _ in range(epochs):
-        permutation = torch.randperm(train_tensor.size(0))
+        permutation = torch.randperm(train_tensor.size(0), device=device)
         for start in range(0, train_tensor.size(0), batch_size):
             batch = train_tensor[permutation[start : start + batch_size]]
             outputs = model(batch)
@@ -296,8 +414,12 @@ def train_autoencoder(
 
     model.eval()
     with torch.no_grad():
-        train_errors = torch.mean((model(train_tensor) - train_tensor) ** 2, dim=1).cpu().numpy()
-        val_errors = torch.mean((model(val_tensor) - val_tensor) ** 2, dim=1).cpu().numpy()
+        train_errors = np.concatenate(
+            [torch.mean((model(batch) - batch) ** 2, dim=1).detach().cpu().numpy() for batch in tensor_batches(train_tensor, eval_batch_size)]
+        )
+        val_errors = np.concatenate(
+            [torch.mean((model(batch) - batch) ** 2, dim=1).detach().cpu().numpy() for batch in tensor_batches(val_tensor, eval_batch_size)]
+        )
 
     threshold = float(np.percentile(train_errors, 99))
     risk_thresholds = unsupervised_risk_thresholds(train_errors)
@@ -513,6 +635,8 @@ def train_ppo_policy(
     label_encoder: LabelEncoder,
 ) -> dict:
     ensure_dir(dump_dir)
+    accel = configure_system_acceleration()
+    device = torch.device(accel["device"])
     torch.manual_seed(42)
     np.random.seed(42)
     scaler = StandardScaler()
@@ -521,24 +645,28 @@ def train_ppo_policy(
     teacher_train_prob = teacher_attack_probability(teacher_model.predict_proba(X_train), label_encoder)
     teacher_val_prob = teacher_attack_probability(teacher_model.predict_proba(X_val), label_encoder)
 
-    model = PPOPolicyNetwork(input_dim=X_train_scaled.shape[1], hidden_dim=hidden_dim_for_features(X_train_scaled.shape[1], minimum=32), action_dim=2)
+    model = PPOPolicyNetwork(
+        input_dim=X_train_scaled.shape[1],
+        hidden_dim=hidden_dim_for_features(X_train_scaled.shape[1], minimum=32),
+        action_dim=2,
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
 
-    states = torch.tensor(X_train_scaled, dtype=torch.float32)
-    actions = torch.tensor(y_train_binary, dtype=torch.long)
-    returns = torch.tensor(np.where(y_train_binary == 1, 1.0, 0.0), dtype=torch.float32)
+    states = torch.tensor(X_train_scaled, dtype=torch.float32, device=device)
+    actions = torch.tensor(y_train_binary, dtype=torch.long, device=device)
+    returns = torch.tensor(np.where(y_train_binary == 1, 1.0, 0.0), dtype=torch.float32, device=device)
     sampled_idx = balanced_sample_indices(y_train_binary, max_per_class=120000)
     states = states[sampled_idx]
     actions = actions[sampled_idx]
     returns = returns[sampled_idx]
-    teacher_targets = torch.tensor(teacher_train_prob[sampled_idx], dtype=torch.float32)
+    teacher_targets = torch.tensor(teacher_train_prob[sampled_idx], dtype=torch.float32, device=device)
 
-    present_classes = np.unique(actions.numpy())
-    class_weights = compute_class_weight(class_weight="balanced", classes=present_classes, y=actions.numpy())
+    present_classes = np.unique(actions.detach().cpu().numpy())
+    class_weights = compute_class_weight(class_weight="balanced", classes=present_classes, y=actions.detach().cpu().numpy())
     expanded_weights = np.ones(2, dtype=np.float32)
     for cls, weight in zip(present_classes, class_weights):
         expanded_weights[int(cls)] = float(weight)
-    class_weights_t = torch.tensor(expanded_weights, dtype=torch.float32)
+    class_weights_t = torch.tensor(expanded_weights, dtype=torch.float32, device=device)
 
     for _ in range(max(4, epochs)):
         logits, values = model(states)
@@ -576,9 +704,9 @@ def train_ppo_policy(
 
     model.eval()
     with torch.no_grad():
-        train_logits, _ = model(torch.tensor(X_train_scaled, dtype=torch.float32))
+        train_logits, _ = model(torch.tensor(X_train_scaled, dtype=torch.float32, device=device))
         train_probs_full = torch.softmax(train_logits, dim=1)[:, 1].cpu().numpy()
-        logits, _ = model(torch.tensor(X_val_scaled, dtype=torch.float32))
+        logits, _ = model(torch.tensor(X_val_scaled, dtype=torch.float32, device=device))
         val_probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
     fpr, tpr, roc_thresholds = roc_curve(y_train_binary, train_probs_full)
     best_idx = int(np.argmax(tpr - fpr))
@@ -616,6 +744,8 @@ def train_ppo_policy(
 
 def train_gnn(X_train: np.ndarray, X_val: np.ndarray, y_train_binary: np.ndarray, y_val_binary: np.ndarray, feature_names: list[str], dump_dir: Path, epochs: int) -> dict:
     ensure_dir(dump_dir)
+    accel = configure_system_acceleration()
+    device = torch.device(accel["device"])
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
@@ -623,16 +753,16 @@ def train_gnn(X_train: np.ndarray, X_val: np.ndarray, y_train_binary: np.ndarray
     X_train_scaled = X_train_scaled[sampled_idx]
     y_train_binary = y_train_binary[sampled_idx]
 
-    train_x = torch.tensor(X_train_scaled, dtype=torch.float32)
-    val_x = torch.tensor(X_val_scaled, dtype=torch.float32)
-    train_y = torch.tensor(y_train_binary, dtype=torch.long)
+    train_x = torch.tensor(X_train_scaled, dtype=torch.float32, device=device)
+    val_x = torch.tensor(X_val_scaled, dtype=torch.float32, device=device)
+    train_y = torch.tensor(y_train_binary, dtype=torch.long, device=device)
     best = None
     class_weights = compute_class_weight(class_weight="balanced", classes=np.array([0, 1]), y=y_train_binary)
-    class_weights_t = torch.tensor(class_weights, dtype=torch.float32)
+    class_weights_t = torch.tensor(class_weights, dtype=torch.float32, device=device)
     for k_neighbors in (6, 8, 12):
         train_edges = knn_edge_index(train_x, k=k_neighbors)
         val_edges = knn_edge_index(val_x, k=k_neighbors)
-        model = FlowGNN(input_dim=train_x.shape[1], hidden_dim=hidden_dim_for_features(train_x.shape[1], minimum=32), output_dim=2)
+        model = FlowGNN(input_dim=train_x.shape[1], hidden_dim=hidden_dim_for_features(train_x.shape[1], minimum=32), output_dim=2).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
         for _ in range(epochs):
             model.train()
@@ -725,13 +855,15 @@ def apply_profile_defaults(args) -> None:
         if args.per_file_rows is None:
             args.per_file_rows = 50000
         args.gnn_rows = min(args.gnn_rows, 20000)
+        args.batch_size = max(args.batch_size, 2048)
     elif profile == "full":
-        pass
+        args.batch_size = max(args.batch_size, 4096)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download CICIDS2017 and retrain network intrusion models.")
     parser.add_argument("--download", action="store_true", help="Download CICIDS2017 CSV files before training.")
+    parser.add_argument("--download-cicids2018", action="store_true", help="Download official CSE-CIC-IDS2018 processed CSV files before training.")
     parser.add_argument("--overwrite-downloads", action="store_true", help="Re-download dataset files even if they already exist.")
     parser.add_argument("--dataset-dir", default=str(DATASET_DIR))
     parser.add_argument("--profile", choices=["fast", "balanced", "full"], default="balanced", help="Training runtime profile.")
@@ -741,14 +873,25 @@ def main() -> None:
     parser.add_argument("--ae-epochs", type=int, default=20)
     parser.add_argument("--gnn-epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--skip-ae", action="store_true")
+    parser.add_argument("--skip-iso", action="store_true")
+    parser.add_argument("--skip-kmeans", action="store_true")
     args = parser.parse_args()
     apply_profile_defaults(args)
+    accel = configure_system_acceleration()
 
     dataset_dir = Path(args.dataset_dir)
     if args.download:
         print("Downloading dataset...")
         download_dataset(dataset_dir, overwrite=args.overwrite_downloads)
+    if args.download_cicids2018:
+        print("Downloading official CSE-CIC-IDS2018 processed CSV files...")
+        download_cse_cic_ids2018(dataset_dir, overwrite=args.overwrite_downloads)
 
+    print(
+        f"System acceleration: cpu_threads={accel['cpu_threads']} "
+        f"device={accel['device']} gpu={accel['gpu_name'] or 'none'}"
+    )
     print(f"Loading dataset with profile={args.profile} per_file_rows={args.per_file_rows} ...")
     df = load_dataset(dataset_dir, per_file_rows=args.per_file_rows)
     print(f"Loaded {len(df)} rows with {df['label'].nunique()} labels.")
@@ -776,20 +919,29 @@ def main() -> None:
         "dropped_correlated_features": dropped_features,
     }
 
-    print("Training autoencoder...")
-    metrics["autoencoder"] = train_autoencoder(
-        X_train_benign,
-        X_val,
-        y_val_binary,
-        X_numeric.columns.tolist(),
-        ROOT / "AutoEncoderDumps",
-        epochs=args.ae_epochs,
-        batch_size=args.batch_size,
-    )
-    print("Training isolation forest...")
-    metrics["isolation_forest"] = train_isolation_forest(X_train_benign, X_val, y_val_binary, X_numeric.columns.tolist(), ROOT / "IsoDumps")
-    print("Training k-means...")
-    metrics["kmeans"] = train_kmeans(X_train_benign, X_val, y_val_binary, X_numeric.columns.tolist(), ROOT / "KmeansDumps")
+    if not args.skip_ae:
+        print("Training autoencoder...")
+        metrics["autoencoder"] = train_autoencoder(
+            X_train_benign,
+            X_val,
+            y_val_binary,
+            X_numeric.columns.tolist(),
+            ROOT / "AutoEncoderDumps",
+            epochs=args.ae_epochs,
+            batch_size=args.batch_size,
+        )
+    else:
+        metrics["autoencoder"] = {"skipped": True}
+    if not args.skip_iso:
+        print("Training isolation forest...")
+        metrics["isolation_forest"] = train_isolation_forest(X_train_benign, X_val, y_val_binary, X_numeric.columns.tolist(), ROOT / "IsoDumps")
+    else:
+        metrics["isolation_forest"] = {"skipped": True}
+    if not args.skip_kmeans:
+        print("Training k-means...")
+        metrics["kmeans"] = train_kmeans(X_train_benign, X_val, y_val_binary, X_numeric.columns.tolist(), ROOT / "KmeansDumps")
+    else:
+        metrics["kmeans"] = {"skipped": True}
     print("Training random forest...")
     metrics["random_forest"] = train_random_forest(
         X_train,

@@ -338,34 +338,47 @@
                             </div>
                             <div>
                                 <label for="pcapRate">Packets / sec</label>
-                                <input id="pcapRate" type="number" value="100" min="1">
+                                <input id="pcapRate" type="number" value="5000" min="1">
                             </div>
                         </div>
                         <div class="field-row">
                             <label for="pcapLimit">Packet Limit</label>
-                            <input id="pcapLimit" type="number" value="0" min="0">
+                            <input id="pcapLimit" type="number" value="20000" min="0">
+                        </div>
+                        <div class="field-row">
+                            <label for="pcapSendPackets">Replay packets onto the network</label>
+                            <input id="pcapSendPackets" type="checkbox">
                         </div>
                         <div class="button-row">
                             <button id="uploadPcapBtn" class="ghost" type="button">Upload PCAP</button>
                             <button id="replayPcapBtn" class="secondary" type="button">Replay PCAP</button>
+                            <button id="clearPcapRunsBtn" class="ghost" type="button">Clear Saved Replays</button>
                         </div>
-                        <p class="helper" id="pcapHint">Replay an existing PCAP through the selected interface and score the observed traffic in the dashboard.</p>
+                        <p class="helper" id="pcapHint">Analyze a PCAP in the IDS using the same scoring path as live capture. Turn on network replay only when you specifically need packets sent out on the wire.</p>
                     </article>
 
-                    <article class="card">
-                        <div class="card-head">
-                            <h2>Replay Comparison</h2>
-                            <span>How much suspicious traffic was in the replay versus how much the IDS elevated</span>
-                        </div>
-                        <div class="feature-list" id="pcapReplaySummary"></div>
-                    </article>
+                        <article class="card">
+                            <div class="card-head">
+                                <h2>Replay Comparison</h2>
+                                <span>Real bidirectional replay pairs, how many looked suspicious, and how many were elevated to medium or high</span>
+                            </div>
+                            <div class="feature-list" id="pcapReplaySummary"></div>
+                        </article>
+
+                        <article class="card">
+                            <div class="card-head">
+                                <h2>Top Detected Labels</h2>
+                                <span>The leading suspicious labels found in the most recent replay</span>
+                            </div>
+                            <div class="feature-list" id="pcapTopLabels"></div>
+                        </article>
                 </section>
 
                 <section class="dashboard-grid experiments-grid">
                     <article class="card wide-card">
                         <div class="card-head">
                             <h2>PCAP Replay Evaluation</h2>
-                            <span>Attack-like flows in the PCAP compared to IDS detections</span>
+                            <span>Real attack-profile PCAPs only, scored by how many attack pairs the IDS elevated</span>
                         </div>
                         <div class="table-wrap compact">
                             <table>
@@ -374,12 +387,32 @@
                                         <th>PCAP</th>
                                         <th>Packets</th>
                                         <th>Flows</th>
-                                        <th>Attack-like Flows</th>
-                                        <th>IDS Detections</th>
-                                        <th>Detection Rate</th>
+                                        <th>Attack Pairs</th>
+                                        <th>Correctly Detected</th>
+                                        <th>Correctly Detected %</th>
                                     </tr>
                                 </thead>
                                 <tbody id="pcapRunsTable"></tbody>
+                            </table>
+                        </div>
+                        <div class="card-head" style="margin-top: 1rem;">
+                            <h2>Replay History</h2>
+                            <span>Every PCAP replay you have run, including baseline and mixed traffic checks</span>
+                        </div>
+                        <div class="table-wrap compact">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>PCAP</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                        <th>Packets</th>
+                                        <th>Flows</th>
+                                        <th>Pairs Checked</th>
+                                        <th>Detected</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pcapHistoryTable"></tbody>
                             </table>
                         </div>
                     </article>

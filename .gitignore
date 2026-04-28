@@ -27,6 +27,7 @@ Backend/server_stderr.log
 
 ExternalTools/
 Dataset/
+Dataset_CSE_CIC_IDS2018/
 
 .pytest_cache/
 .mypy_cache/
