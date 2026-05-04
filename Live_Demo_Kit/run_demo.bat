@@ -30,21 +30,15 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [1/4] Checking Python dependencies...
+echo [1/2] Navigating to project directory...
 cd /d "%~dp0.."
-cd Backend
-if not exist "venv_new" (
-    echo [INFO] Virtual environment not found, creating...
-    python -m venv venv_new
+if %errorLevel% neq 0 (
+    echo [ERROR] Could not navigate to project directory
+    pause
+    exit /b 1
 )
 
-echo [2/4] Activating virtual environment...
-call venv_new\Scripts\activate.bat
-
-echo [3/4] Installing dependencies (if needed)...
-pip install -q -r requirements.txt 2>nul
-
-echo [4/4] Starting the application...
+echo [2/2] Starting the application...
 echo.
 echo ===============================================================================
 echo DASHBOARD WILL OPEN IN YOUR DEFAULT BROWSER
@@ -54,7 +48,12 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-cd /d "%~dp0.."
 python run_project.py
+
+if %errorLevel% neq 0 (
+    echo.
+    echo [ERROR] Application failed to start
+    echo Check the error message above for details
+)
 
 pause
