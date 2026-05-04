@@ -1,0 +1,49 @@
+===============================================================================
+ATTACK SIMULATION SOFTWARE - DOWNLOAD INSTRUCTIONS
+===============================================================================
+CSCI480 Layered IDS/IPS - Senior Capstone Project
+
+===============================================================================
+DOWNLOADED FILES
+===============================================================================
+
+1. nmap-setup.exe (33.9 MB)
+   - Network Mapper - Port scanning tool
+   - Install: Run nmap-setup.exe
+   - Demo Command: nmap -sS 127.0.0.1
+
+2. hping3.zip (638 KB)
+   - Source code for hping3 (requires compilation)
+   - Alternative: Use hping3-win.zip if available
+   - Note: Requires C compiler to build on Windows
+
+3. tcpreplay.zip (98 KB)
+   - PCAP replay tool
+   - Install: Extract and run tcpreplay.exe
+   - Demo Command: tcpreplay -i <interface> attack.pcap
+
+===============================================================================
+MANUAL DOWNLOADS REQUIRED
+===============================================================================
+
+Wireshark failed to download due to connection issues.
+Please download manually from: https://www.wireshark.org/download.html
+
+Alternative: Use the project's built-in packet capture via Scapy
+
+===============================================================================
+INSTALLATION SCRIPT
+===============================================================================
+
+Run the following commands to install the downloaded tools:
+
+# Install Nmap
+.\downloads\nmap-setup.exe
+
+# Extract tcpreplay
+Expand-Archive -Path .\downloads\tcpreplay.zip -DestinationPath .\downloads\tcpreplay
+
+# Note: hping3 requires compilation on Windows
+# Alternative: Use the included Python scripts instead
+
+===============================================================================
