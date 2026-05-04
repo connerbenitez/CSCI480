@@ -1,0 +1,34 @@
+===============================================================================
+QUICK COMMANDS REFERENCE - CSCI480 LAYERED IDS/IPS
+===============================================================================
+
+SETUP (One-time):
+-----------------
+cd CSCI480
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+cd Backend
+pip install -r requirements.txt
+cd ..
+
+RUN PROJECT (Every time):
+-------------------------
+cd CSCI480
+.\.venv\Scripts\Activate.ps1
+python run_project.py
+
+ACCESS DASHBOARD:
+------------------
+http://127.0.0.1:5000
+
+IMPORTANT NOTES:
+----------------
+- Run as Administrator for firewall prevention features
+- Install Npcap from https://npcap.com/ for packet capture
+- If cloning repo: git lfs install && git lfs pull
+
+TROUBLESHOOTING:
+----------------
+- No interfaces? Run as Admin
+- Models not loading? Run: git lfs pull
+- Firewall fails? Must run as Administrator

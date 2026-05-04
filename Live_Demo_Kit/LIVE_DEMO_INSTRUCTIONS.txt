@@ -1,0 +1,189 @@
+===============================================================================
+CSCI480 LAYERED IDS/IPS - LIVE DEMO INSTRUCTIONS
+===============================================================================
+Senior Capstone Project (Academic Demonstration)
+Team: Joshua Swanson | Jerry Buno | Conner Benitez
+
+===============================================================================
+PRE-DEMO CHECKLIST
+===============================================================================
+
+Before starting the demo, ensure:
+
+[ ] Run the demo launcher as Administrator (for firewall prevention/healing)
+[ ] Npcap is installed (for packet capture on Windows)
+[ ] Python 3.11+ is installed
+[ ] Network interface is active (Wi-Fi or Ethernet)
+[ ] Browser is available for dashboard access
+[ ] Presentation file (CSCI480_Presentation.pptx) is open and ready
+
+===============================================================================
+DEMO LAUNCH
+===============================================================================
+
+Step 1: Start the Application
+----------------------------
+1. Navigate to: C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit
+2. Right-click on: run_demo.bat
+3. Select: "Run as Administrator"
+4. Wait for the dashboard to open in your browser
+5. Confirm the URL: http://127.0.0.1:5000
+
+Expected Output:
+- Browser opens automatically
+- Dashboard loads with "All layered detection and prevention services online" message
+- Capture state shows "Idle" or "Standby"
+
+===============================================================================
+LIVE DEMO SCRIPT (5-7 minutes)
+===============================================================================
+
+PART 1: INTRODUCTION (30 seconds)
+----------------------------------
+Speaker: "Welcome to our CSCI480 Senior Capstone Project demonstration. This is an Autonomous Intrusion Prevention System - an academic demonstration of layered network security using machine learning."
+
+Show: Title slide from presentation
+
+PART 2: SYSTEM OVERVIEW (1 minute)
+------------------------------------
+Speaker: "The system uses 7 complementary ML models to detect network threats in real-time. It includes active prevention capabilities through firewall blocking and adaptive decoy deployment."
+
+Action: Click through to "System Architecture" slide
+
+Speaker: "Let me show you the live dashboard."
+
+Action: Switch to browser showing http://127.0.0.1:5000
+
+PART 3: DASHBOARD TOUR (1 minute)
+----------------------------------
+Speaker: "This is the main dashboard. You can see the capture controls, real-time traffic monitoring, and alert management."
+
+Action: Point to each section of the UI:
+- Top: Capture controls and network interface selection
+- Middle: Results table with flow analysis
+- Right: Alert summary and risk indicators
+- Bottom: Defense & Prevention controls
+
+Speaker: "The system is currently in standby mode. Let's start a live capture."
+
+PART 4: START LIVE CAPTURE (1 minute)
+-------------------------------------
+Action:
+1. Select a network interface (e.g., "Wi-Fi" or "Ethernet")
+2. Click "Start Capture" button
+3. Observe the capture state change to "Capturing on [interface]"
+
+Speaker: "I'm starting packet capture on the network interface. The system is now monitoring all network traffic in real-time."
+
+Wait: 30-60 seconds for some traffic to accumulate
+
+Speaker: "As you can see, the results table is filling up with network flows. Each flow is analyzed by all 7 ML models, and the system provides an ensemble risk assessment."
+
+Action: Point to the results table showing:
+- Source/Destination IPs
+- Protocol information
+- Model predictions (RF, GBDT, PPO, GNN)
+- Ensemble risk score (Normal/Low/Medium/High)
+
+PART 5: MODEL PERFORMANCE (30 seconds)
+---------------------------------------
+Speaker: "The system achieves 92% accuracy for known attack classification using Gradient Boosted Trees, and 88% ROC-AUC for anomaly detection using our Graph Neural Network."
+
+Action: Click through to "ML Models Overview" slide
+
+Speaker: "Let's switch back to the dashboard to see the model settings."
+
+Action: Switch back to browser, click "Model Settings" tab
+
+PART 6: MODEL SETTINGS (30 seconds)
+------------------------------------
+Speaker: "Here you can see all 7 models and their current status. You can enable/disable individual models to see how the ensemble changes."
+
+Action: Point to the model toggles and status indicators
+
+Speaker: "The layered approach allows us to detect both known attacks through supervised models and novel threats through unsupervised anomaly detection."
+
+PART 7: DEFENSE & PREVENTION (1 minute)
+---------------------------------------
+Speaker: "Beyond detection, the system includes active prevention capabilities. Let's show the defense controls."
+
+Action: Click "Defense & Prevention" tab
+
+Speaker: "This tab shows firewall rules, decoy management, and healing settings. The system can automatically block malicious IPs and deploy decoys to confuse attackers."
+
+Action: Point to:
+- Blocked IPs list (if any)
+- Decoy catalog (fake_ssh, fake_http_admin, fake_database, fake_modbus)
+- Healing window settings
+
+Speaker: "The healing feature automatically removes firewall rules after a configurable time window, reducing the impact of false positives."
+
+PART 8: DECOY DEMONSTRATION (1 minute)
+--------------------------------------
+Speaker: "Let's deploy a decoy to show the threat deception capability."
+
+Action:
+1. Select a decoy profile (e.g., "fake_ssh")
+2. Click "Deploy Decoy" button
+3. Observe the decoy appear in the active decoys list
+
+Speaker: "I've deployed a fake SSH decoy on port 2222. This decoy responds with a realistic SSH banner to confuse attackers during reconnaissance."
+
+Speaker: "The system tracks all decoy interactions and can automatically escalate to blocking if an IP repeatedly interacts with decoys."
+
+PART 9: PCAP REPLAY (30 seconds)
+---------------------------------
+Speaker: "The system also supports PCAP replay for forensic analysis and testing."
+
+Action: Click "PCAP Replay" tab
+
+Speaker: "You can upload PCAP files to analyze historical traffic or test the models against curated attack samples."
+
+PART 10: STOP CAPTURE (30 seconds)
+-----------------------------------
+Speaker: "Let's stop the capture and review the results."
+
+Action:
+1. Click "Stop Capture" button
+2. Observe the capture state change to "Idle"
+
+Speaker: "The system has captured and analyzed the traffic. Results are saved for further analysis."
+
+PART 11: CONCLUSION (30 seconds)
+---------------------------------
+Speaker: "This system demonstrates a layered approach to network intrusion detection and prevention using machine learning. It's designed as an academic demonstration to show how multiple complementary models can work together for comprehensive network security."
+
+Action: Switch back to presentation, show "Thank You" slide
+
+Speaker: "Thank you for your attention. Are there any questions?"
+
+===============================================================================
+TROUBLESHOOTING
+===============================================================================
+
+Issue: "Models unavailable" error
+Solution: Check that ML model artifacts exist in the ML folder
+
+Issue: "Capture failed" error
+Solution: Run as Administrator and ensure Npcap is installed
+
+Issue: No traffic appearing
+Solution: Select an active network interface with traffic (not a disconnected one)
+
+Issue: Firewall blocking not working
+Solution: Must run as Administrator for prevention/healing features
+
+Issue: Port already in use
+Solution: Stop any other applications using port 5000
+
+===============================================================================
+QUICK REFERENCE
+===============================================================================
+
+Dashboard URL: http://127.0.0.1:5000
+Default Interface: Wi-Fi or Ethernet
+Default Healing Window: 30 seconds
+Model Count: 7 models
+Decoy Profiles: 4 (SSH, HTTP, Database, Modbus)
+
+===============================================================================

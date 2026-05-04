@@ -1,0 +1,268 @@
+===============================================================================
+CSCI480 LAYERED IDS/IPS - LIVE DEMO INSTRUCTIONS
+===============================================================================
+
+PREREQUISITES:
+- Python 3.11+ installed
+- Npcap installed (https://npcap.com/) for packet capture
+- Administrator privileges for firewall prevention/healing features
+- Git LFS installed (if cloning from repository)
+
+===============================================================================
+PART 1: COMMANDS TO RUN THE PROJECT
+===============================================================================
+
+OPTION A: RUNNING FROM SOURCE (Development Mode)
+-------------------------------------------------
+
+Step 1: Clone and navigate to project
+git lfs install
+git clone <your-github-repo-url>
+cd CSCI480
+
+Step 2: Create and activate virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+Step 3: Install dependencies
+cd Backend
+pip install -r requirements.txt
+cd ..
+
+Step 4: Run the project
+python run_project.py
+
+The dashboard will open automatically at: http://127.0.0.1:5000
+
+
+OPTION B: RUNNING PACKAGED EXECUTABLE (Demonstration Mode)
+------------------------------------------------------------
+
+Step 1: Install Npcap from https://npcap.com/
+Step 2: Run the installer or execute CSCI480 Layered IDS.exe
+Step 3: Run as Administrator for firewall features
+Step 4: Access dashboard at: http://127.0.0.1:5000
+
+NOTE: This is an academic capstone project for demonstration purposes only.
+
+
+OPTION C: QUICK START (If already set up)
+-----------------------------------------
+cd CSCI480
+.\.venv\Scripts\Activate.ps1
+python run_project.py
+
+
+===============================================================================
+PART 2: LIVE DEMO SCRIPT (10-15 minutes)
+===============================================================================
+
+INTRODUCTION (1-2 minutes)
+---------------------------
+"Today we're presenting CSCI480 Layered IDS/IPS, a multi-model intrusion 
+detection and prevention system. Our system uses 7 different ML models to 
+detect network threats in real-time and can actively prevent attacks through 
+firewall rules and decoy deployment."
+
+DEMO STEP 1: DASHBOARD OVERVIEW (1-2 minutes)
+----------------------------------------------
+1. Show the main dashboard at http://127.0.0.1:5000
+2. Highlight key sections:
+   - Network Interface Selection
+   - Start/Stop Capture controls
+   - Real-time Results Table
+   - Defense & Prevention Tab
+   - PCAP Replay Tab
+3. Explain the color-coded risk levels:
+   - GREEN: Normal traffic
+   - YELLOW: Low risk
+   - ORANGE: Medium risk
+   - RED: High risk
+
+
+DEMO STEP 2: LIVE PACKET CAPTURE (2-3 minutes)
+-----------------------------------------------
+1. Select a network interface (e.g., Wi-Fi or Ethernet)
+2. Click "Start Capture" button
+3. Explain what's happening:
+   - Scapy is capturing packets in real-time
+   - Flows are being extracted and analyzed
+   - 7 ML models are making predictions
+4. Wait 30-60 seconds for traffic to accumulate
+5. Show the Results tab with live updates
+6. Point out:
+   - Timestamp of each flow
+   - Source and destination IPs
+   - Protocol and ports
+   - Individual model predictions
+   - Ensemble risk score
+
+
+DEMO STEP 3: ML MODEL EXPLANATION (1-2 minutes)
+------------------------------------------------
+1. Explain the 7 ML models:
+   - AutoEncoder (unsupervised): Detects anomalies via reconstruction error
+   - IsolationForest (unsupervised): Isolates anomalies using random partitioning
+   - KMeans (unsupervised): Clustering-based anomaly detection
+   - RandomForest (supervised): Multi-class attack classification
+   - GradientBoosting (supervised): Ensemble decision trees
+   - Graph Neural Network (deep learning): Flow pattern analysis
+   - PPO (reinforcement learning): Adaptive response policy
+
+2. Show how models vote on each packet
+3. Explain ensemble risk scoring
+
+
+DEMO STEP 4: ATTACK SIMULATION (2-3 minutes)
+----------------------------------------------
+1. Navigate to "Defense & Prevention" tab
+2. Select an attack type from the dropdown:
+   - DDoS (Distributed Denial of Service)
+   - Port Scan
+   - SQL Injection
+   - Brute Force
+3. Click "Simulate Attack"
+4. Observe the attack being detected
+5. Show how the system responds:
+   - Risk level increases
+   - Alerts are generated
+   - Prevention actions can be triggered
+
+
+DEMO STEP 5: ACTIVE PREVENTION (2-3 minutes)
+---------------------------------------------
+1. Demonstrate firewall blocking:
+   - Select a suspicious IP from results
+   - Click "Block IP" (inbound or bidirectional)
+   - Show the firewall rule being created
+2. Demonstrate port shielding:
+   - Select a service port (e.g., 80, 443, 3389)
+   - Click "Shield Port"
+   - Explain how this protects critical services
+3. Demonstrate decoy deployment:
+   - Click "Deploy Decoy"
+   - Explain how honeypots attract attackers
+   - Show decoy status in the dashboard
+
+
+DEMO STEP 6: PCAP REPLAY (1-2 minutes)
+----------------------------------------
+1. Navigate to "PCAP Replay" tab
+2. Upload a sample PCAP file (or use bundled samples)
+3. Click "Analyze PCAP"
+4. Show how the system processes historical traffic
+5. Explain forensic analysis capabilities
+6. Export results for further investigation
+
+
+DEMO STEP 7: RESULTS EXPORT (1 minute)
+---------------------------------------
+1. Click "Export Results" button
+2. Show the CSV export with all flow data
+3. Explain how this can be used for:
+   - Further analysis
+   - Reporting
+   - Model training improvement
+
+
+CONCLUSION (1 minute)
+---------------------
+"Our system provides comprehensive network security through layered ML 
+detection, active prevention capabilities, and real-time visualization. 
+The Windows packaging makes it easy to deploy in any environment, and the 
+modular architecture allows for continuous improvement."
+
+===============================================================================
+PART 3: KEY FEATURES TO HIGHLIGHT
+===============================================================================
+
+UNIQUE SELLING POINTS:
+- Layered detection with 7 complementary ML models
+- Active prevention (not just detection)
+- Real-time attack simulation
+- Windows-native packaging
+- Adaptive decoy deployment
+- Reinforcement learning for response policy
+
+TECHNICAL HIGHLIGHTS:
+- Flask backend with Scapy packet capture
+- PyTorch and scikit-learn for ML models
+- Real-time dashboard with live updates
+- PowerShell-based firewall integration
+- PCAP replay for forensic analysis
+
+===============================================================================
+PART 4: TROUBLESHOOTING
+===============================================================================
+
+ISSUE: No network interfaces appear
+SOLUTION: Run as Administrator, ensure Npcap is installed
+
+ISSUE: Capture fails to start
+SOLUTION: Run terminal as Administrator, check Npcap installation
+
+ISSUE: Models not loading
+SOLUTION: Ensure Git LFS pulled large files: git lfs pull
+
+ISSUE: Firewall actions fail
+SOLUTION: Must run as Administrator on Windows
+
+ISSUE: Dashboard not loading
+SOLUTION: Check if port 5000 is available, verify Flask is running
+
+===============================================================================
+PART 5: DEMO CHECKLIST
+===============================================================================
+
+[ ] Prerequisites installed (Python, Npcap)
+[ ] Virtual environment activated
+[ ] Dependencies installed
+[ ] Project running (python run_project.py)
+[ ] Dashboard accessible at http://127.0.0.1:5000
+[ ] Network interface selected
+[ ] Live capture tested
+[ ] Attack simulation tested
+[ ] Prevention actions tested
+[ ] PCAP replay tested
+[ ] Results export tested
+[ ] Screenshots taken for presentation
+[ ] Presentation slides ready
+
+===============================================================================
+PART 6: SCREENSHOT LOCATIONS FOR PRESENTATION
+===============================================================================
+
+Take screenshots of the following views:
+
+1. Dashboard Overview (main page)
+   - Show interface selection and control panel
+   - Save as: screenshot_01_dashboard.png
+
+2. Live Capture Results
+   - Show results table with model predictions
+   - Save as: screenshot_02_live_results.png
+
+3. Attack Detection
+   - Show high-risk alerts during attack simulation
+   - Save as: screenshot_03_attack_detection.png
+
+4. Defense & Prevention
+   - Show firewall blocking interface
+   - Save as: screenshot_04_prevention.png
+
+5. PCAP Replay
+   - Show PCAP upload and analysis
+   - Save as: screenshot_05_pcap_replay.png
+
+6. Model Settings
+   - Show enabled/disabled models
+   - Save as: screenshot_06_models.png
+
+To take screenshots:
+- Use Windows Snipping Tool (Win + Shift + S)
+- Or press Print Screen and paste into Paint
+- Save to Demo_Instructions/screenshots/ folder
+
+===============================================================================
+END OF DEMO INSTRUCTIONS
+===============================================================================

@@ -1,0 +1,378 @@
+===============================================================================
+CSCI480 LAYERED IDS/IPS - TEXT PRESENTATION FOR GEMINI
+===============================================================================
+Copy and paste this content into Gemini to generate slides or presentation materials.
+
+===============================================================================
+SLIDE 1: TITLE SLIDE
+===============================================================================
+Title: CSCI480 Layered IDS/IPS
+Subtitle: Autonomous Intrusion Prevention System
+Additional Text: Senior Capstone Project (Academic Demonstration)
+Team: Joshua Swanson | Jerry Buno | Conner Benitez
+
+[PLACEHOLDER: Project logo or university seal]
+
+===============================================================================
+SLIDE 2: PROBLEM STATEMENT & MOTIVATION
+===============================================================================
+Title: Problem Statement & Motivation
+
+Content:
+Current security systems suffer from three major weaknesses:
+- Passive defense: Alerts occur after damage may already be done
+- Static rule sets: Ineffective against zero-day or novel attacks
+- Alert fatigue: Excessive notifications overwhelm security teams
+- Traditional signature-based IDS cannot detect zero-day attacks
+- Automated attacks operate faster than human defenders can respond
+- Organizations require layered defense with multiple detection models
+- Need for active prevention capabilities beyond passive monitoring
+
+[PLACEHOLDER: Graph showing rising cyber attack trends over time]
+[PLACEHOLDER: Chart comparing signature-based vs ML-based detection accuracy]
+
+===============================================================================
+SLIDE 3: PROJECT OBJECTIVES
+===============================================================================
+Title: Project Objectives
+
+Content:
+- Learn patterns of normal network activity
+- Detect deviations that may indicate malicious behavior using machine learning
+- Create active response mechanisms to mitigate threats (Rule-based and AI Agent)
+- Record and analyze incidents to support system improvement
+- Develop an administrative dashboard for real-time monitoring and historical analysis
+- Implement feedback loop for adaptive learning and false positive reduction
+
+[PLACEHOLDER: Objective hierarchy diagram]
+
+===============================================================================
+SLIDE 4: KEY FEATURES & FUNCTIONALITY
+===============================================================================
+Title: Key Features & Functionality
+
+Content:
+- Data Collection - Scapy packet capture with feature extraction
+- Live packet capture with real-time analysis
+- Layered ML detection using 7 different models (AutoEncoder, IsolationForest, KMeans, RandomForest, GradientBoosting, GNN, PPO)
+- Active prevention and healing via firewall rules
+- Real attack simulation for testing
+- PCAP replay and upload for forensic analysis
+- Real-time dashboard with visualization
+- Adaptive decoy deployment for threat deception
+- Feedback Loop & Adaptive Learning for continuous improvement
+
+[PLACEHOLDER: Feature diagram or icon grid showing all features]
+
+===============================================================================
+SLIDE 5: SYSTEM ARCHITECTURE
+===============================================================================
+Title: System Architecture
+
+Left Column:
+Backend (Flask API)
+- Packet capture engine (Scapy)
+- ML model inference pipeline
+- Prevention/healing logic
+- Attack simulator
+- Decoy manager
+
+Right Column:
+Frontend (Dashboard UI)
+- Real-time traffic visualization
+- Alert management interface
+- Defense controls
+- PCAP analysis tools
+- Results export
+
+[PLACEHOLDER: System architecture diagram showing components and data flow]
+[PLACEHOLDER: Network diagram showing how the system integrates with network infrastructure]
+
+===============================================================================
+SLIDE 6: TECHNOLOGIES USED
+===============================================================================
+Title: Technologies Used
+
+Left Column:
+Backend Frameworks
+- Flask (Python web framework)
+- Flask-CORS (cross-origin)
+- Scapy (packet capture)
+- psutil (system monitoring)
+
+Right Column:
+ML & Data Science
+- PyTorch (deep learning)
+- scikit-learn (ML models)
+- NumPy & Pandas (data)
+- 7 ML models: AE, IsoForest, KMeans, RF, GNN, PPO, GBDT
+
+[PLACEHOLDER: Technology stack diagram or logos of technologies used]
+[PLACEHOLDER: Version numbers and dependency graph]
+
+===============================================================================
+SLIDE 7: ML MODELS OVERVIEW
+===============================================================================
+Title: ML Models Overview
+
+Content:
+- AutoEncoder (Unsupervised) - Anomaly detection via reconstruction error
+- IsolationForest (Unsupervised) - Isolates anomalies using random partitioning
+- KMeans (Unsupervised) - Clustering-based anomaly detection
+- RandomForest (Supervised) - Multi-class attack classification
+- GradientBoosting (Supervised) - Ensemble decision trees
+- Graph Neural Network (Deep Learning) - Flow pattern analysis
+- PPO (Reinforcement Learning) - Adaptive response policy
+
+[PLACEHOLDER: Diagram showing how the 7 models work together in ensemble]
+[PLACEHOLDER: Performance comparison chart of each model]
+
+===============================================================================
+SLIDE 8: KEY CHALLENGES & SOLUTIONS
+===============================================================================
+Title: Key Challenges & Solutions
+
+Left Column:
+Challenge: Real-time packet capture
+Solution: Batched capture with Scapy, async processing
+
+Challenge: ML model integration
+Solution: Unified prediction API with feature scaling
+
+Challenge: Windows firewall integration
+Solution: PowerShell-based firewall rule management
+
+Right Column:
+Challenge: False positive reduction
+Solution: Ensemble voting with risk ranking
+
+Challenge: Deployment complexity
+Solution: PyInstaller packaging with Inno Setup installer
+
+[PLACEHOLDER: Before/after comparison diagrams for each challenge]
+[PLACEHOLDER: Performance metrics showing improvements]
+
+===============================================================================
+SLIDE 9: TEAM ROLES & LESSONS LEARNED
+===============================================================================
+Title: Team Roles & Lessons Learned
+
+Left Column:
+Team Roles
+Conner Benitez
+- Data Pipeline & Isolation Forest
+- Ensures data is clean before use
+
+Joshua Swanson & Jerry Buno
+- Deep Learning (Autoencoder) & K-Means
+- Model development and integration
+
+Right Column:
+Lessons Learned
+Data Quality First
+- Spent 80% of time on Data Cleaning
+- Bad data breaks models instantly
+
+Model Variety
+- Different models do different things
+- Isolation Forest is fast and broad
+- Autoencoders are precise
+- Using both gives better detection
+
+[PLACEHOLDER: Team photo or individual photos]
+[PLACEHOLDER: Contribution breakdown chart]
+
+===============================================================================
+SLIDE 10: APPLICATION SCREENSHOTS
+===============================================================================
+Title: Application Screenshots
+
+Content:
+[PLACEHOLDER: Screenshot 1 - Dashboard Overview]
+Description: Real-time traffic monitoring interface with alert summary and risk indicators
+
+[PLACEHOLDER: Screenshot 2 - Main UI]
+Description: User interface for capture control and network interface selection
+
+[PLACEHOLDER: Screenshot 3 - Live Results]
+Description: Packet flow analysis table with model predictions and risk scores
+
+[PLACEHOLDER: Screenshot 4 - Defense & Prevention]
+Description: Firewall rule management and decoy deployment controls
+
+[PLACEHOLDER: Screenshot 5 - PCAP Replay]
+Description: Forensic analysis of network traffic from PCAP files
+
+[PLACEHOLDER: Screenshot 6 - Model Settings]
+Description: ML model configuration and status display
+
+===============================================================================
+SLIDE 11: WHAT MAKES IT UNIQUE
+===============================================================================
+Title: What Makes This Project Unique
+
+Content:
+- Layered detection with 7 complementary ML models
+- Active prevention capabilities (firewall blocking, decoy deployment)
+- Real-time attack simulation for testing
+- PCAP replay for forensic analysis
+- Windows-native packaging for easy deployment
+- Adaptive response using reinforcement learning
+- Comprehensive dashboard with real-time visualization
+- Self-Managing System (Autonomic Computing) - goes beyond simple monitoring
+
+[PLACEHOLDER: Comparison table with other IDS/IPS solutions]
+[PLACEHOLDER: Unique value proposition diagram]
+
+===============================================================================
+SLIDE 12: FUTURE IMPROVEMENTS
+===============================================================================
+Title: Future Improvements
+
+Content:
+- Add user authentication and role-based access control
+- Implement feedback loop for adaptive model learning (partially complete)
+- Expand ML model ensemble with additional architectures
+- Add mobile app for remote monitoring
+- Integrate with SIEM systems
+- Implement distributed deployment for enterprise networks
+- Add threat intelligence feed integration
+
+[PLACEHOLDER: Roadmap timeline diagram]
+[PLACEHOLDER: Feature priority matrix]
+
+===============================================================================
+SLIDE 13: LIVE DEMO OVERVIEW
+===============================================================================
+Title: Live Demo Overview
+
+Content:
+1. Launch the application and access dashboard at http://127.0.0.1:5000
+2. Select network interface for packet capture
+3. Start live capture and observe real-time analysis
+4. View results table with model predictions and risk scores
+5. Demonstrate attack simulation capabilities
+6. Show prevention/healing actions (firewall blocking)
+7. Upload and analyze PCAP files
+8. Export results for further analysis
+
+[PLACEHOLDER: Demo workflow diagram]
+[PLACEHOLDER: Screenshot of demo in progress]
+
+===============================================================================
+SLIDE 14: PERFORMANCE METRICS
+===============================================================================
+Title: Performance Metrics
+
+Content:
+- Detection Accuracy: [PLACEHOLDER: percentage]
+- False Positive Rate: [PLACEHOLDER: percentage]
+- Response Time: [PLACEHOLDER: milliseconds]
+- Throughput: [PLACEHOLDER: packets/second]
+- Model Inference Time: [PLACEHOLDER: milliseconds per flow]
+
+[PLACEHOLDER: Bar chart comparing performance metrics]
+[PLACEHOLDER: ROC curve showing detection performance]
+[PLACEHOLDER: Confusion matrix for classification results]
+
+===============================================================================
+SLIDE 15: DATASET & TRAINING
+===============================================================================
+Title: Dataset & Training
+
+Content:
+- Dataset: CSE-CIC-IDS2018
+- Training samples: [PLACEHOLDER: number]
+- Attack types: [PLACEHOLDER: number]
+- Training time: [PLACEHOLDER: hours]
+- Model accuracy: [PLACEHOLDER: percentage]
+
+[PLACEHOLDER: Dataset distribution pie chart]
+[PLACEHOLDER: Training loss curve over epochs]
+[PLACEHOLDER: Class distribution histogram]
+
+===============================================================================
+SLIDE 16: TEAM & CONTRIBUTIONS
+===============================================================================
+Title: Team & Contributions
+
+Content:
+[PLACEHOLDER: Team member names and roles]
+- Team Member 1: [Role - e.g., ML Models, Backend]
+- Team Member 2: [Role - e.g., Frontend, Dashboard]
+- Team Member 3: [Role - e.g., Testing, Documentation]
+- Team Member 4: [Role - e.g., Architecture, Integration]
+
+[PLACEHOLDER: Team photo or individual photos]
+[PLACEHOLDER: Contribution breakdown chart]
+
+===============================================================================
+SLIDE 17: THANK YOU
+===============================================================================
+Title: Thank You
+
+Content:
+Questions?
+
+CSCI480 Layered IDS/IPS Team
+Joshua Swanson | Jerry Buno | Conner Benitez
+[PLACEHOLDER: Contact information or email]
+[PLACEHOLDER: GitHub repository link]
+[PLACEHOLDER: University/course information]
+
+===============================================================================
+ADDITIONAL GRAPHS AND PLOTS TO INCLUDE
+===============================================================================
+
+1. Detection Accuracy Over Time
+   [PLACEHOLDER: Line graph showing detection accuracy improvement]
+
+2. Risk Level Distribution
+   [PLACEHOLDER: Pie chart showing normal, low, medium, high risk distribution]
+
+3. Attack Type Classification
+   [PLACEHOLDER: Bar chart showing classification of different attack types]
+
+4. Model Performance Comparison
+   [PLACEHOLDER: Radar chart comparing all 7 ML models across metrics]
+
+5. Network Traffic Volume
+   [PLACEHOLDER: Time series graph showing traffic volume during demo]
+
+6. Alert Frequency
+   [PLACEHOLDER: Histogram showing alert frequency over time]
+
+7. False Positive Reduction
+   [PLACEHOLDER: Before/after bar chart showing false positive reduction]
+
+8. Response Time Distribution
+   [PLACEHOLDER: Box plot showing response time distribution]
+
+9. Feature Importance
+   [PLACEHOLDER: Bar chart showing most important network features]
+
+10. System Resource Usage
+    [PLACEHOLDER: Line graph showing CPU, memory, network usage during operation]
+
+===============================================================================
+INSTRUCTIONS FOR GEMINI
+===============================================================================
+
+When pasting this into Gemini, you can add:
+
+"Please create a professional presentation based on this content. 
+For each [PLACEHOLDER], create an appropriate visual element:
+- Screenshots: Use generic UI mockups or placeholders
+- Graphs/Charts: Create sample data visualizations
+- Diagrams: Create professional diagrams showing the concepts
+- Photos: Use placeholder images
+
+The presentation should be:
+- Visually appealing and professional
+- Well-organized with clear hierarchy
+- Suitable for an academic senior capstone presentation
+- Clearly indicate this is an academic demonstration, not a commercial product
+- Include appropriate color scheme (professional blues/grays)
+- Use consistent fonts and styling throughout"
+
+===============================================================================
