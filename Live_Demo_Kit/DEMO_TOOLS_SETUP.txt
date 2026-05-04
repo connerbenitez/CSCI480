@@ -1,154 +1,21 @@
 ===============================================================================
-CSCI480 LAYERED IDS/IPS - DEMO TOOLS SETUP
-===============================================================================
-Senior Capstone Project (Academic Demonstration)
-Team: Joshua Swanson | Jerry Buno | Conner Benitez
-
-===============================================================================
-REQUIRED SOFTWARE FOR LIVE DEMO
+CSCI480 LAYERED IDS/IPS - DEMO TOOLS
 ===============================================================================
 
-OPTIONAL BUT RECOMMENDED TOOLS:
----------------------------------
+DOWNLOADED TOOLS (in downloads/ folder):
+----------------------------------------
+1. nmap-setup.exe - Port scanning tool
+   Install: Run nmap-setup.exe
+   Use: nmap -sS 127.0.0.1
 
-1. NMAP (Network Mapper) - Port Scanning Simulation
-   Download: https://nmap.org/download.html
-   Purpose: Simulate port scanning attacks to demonstrate detection
-   Install: Windows installer or portable version
-   Demo Command: nmap -sS 127.0.0.1 (scan localhost)
+2. tcpreplay.zip - PCAP replay tool
+   Install: Extract tcpreplay.zip
+   Use: tcpreplay -i <interface> attack.pcap
 
-2. HPING3 - DoS Attack Simulation
-   Download: https://github.com/antirez/hping
-   Purpose: Simulate DoS/flood attacks
-   Note: May require compilation on Windows
-   Alternative: Use provided Python DoS simulator instead
+3. hping3.zip - DoS tool (requires compilation)
+   Note: Use nmap instead for demo
 
-3. WIRESHARK - Packet Capture Visualization
-   Download: https://www.wireshark.org/download.html
-   Purpose: Show real-time packet capture and analysis
-   Install: Windows installer
-   Demo Use: Monitor interface while system is capturing
-
-4. TCAPREPLAY - PCAP Replay Tool
-   Download: https://tcpreplay.appneta.com/
-   Purpose: Replay PCAP files with attack traffic
-   Install: Windows installer
-   Demo Command: tcpreplay -i <interface> attack.pcap
-
-===============================================================================
-INCLUDED DEMO TOOLS (No Download Required)
-===============================================================================
-
-The following tools are included in this Live_Demo_Kit folder:
-
-1. generate_benign_traffic.py
-   - Generates benign network traffic for baseline demonstration
-   - Safe, educational traffic only
-   - Usage: python generate_benign_traffic.py
-
-2. simulate_port_scan.py
-   - Simulates port scanning behavior
-   - Safe, does not actually scan external networks
-   - Generates traffic patterns that resemble port scans
-   - Usage: python simulate_port_scan.py
-
-3. simulate_dos.py
-   - Simulates DoS/flood attack patterns
-   - Safe, generates local traffic only
-   - Demonstrates high-volume traffic detection
-   - Usage: python simulate_dos.py
-
-4. demo_orchestrator.py
-   - Orchestrates multiple attack simulations
-   - Runs a scripted demo sequence
-   - Coordinates timing with the IDS/IPS system
-   - Usage: python demo_orchestrator.py
-
-===============================================================================
-SAMPLE PCAP FILES
-===============================================================================
-
-Included in Demo_Instructions folder:
-
-- Dataset folder contains CSE-CIC-IDS2018 PCAP files
-- These can be uploaded via the PCAP Replay tab
-- Contains real attack traffic for demonstration
-
-Recommended PCAPs for demo:
-- Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv (DDoS attack)
-- Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv (Port scan)
-- Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv (Web attacks)
-
-===============================================================================
-DEMO SCENARIOS
-===============================================================================
-
-SCENARIO 1: Baseline Detection (2 minutes)
-------------------------------------------
-1. Start the IDS/IPS system
-2. Run generate_benign_traffic.py
-3. Show system classifies traffic as NORMAL
-4. Demonstrate low risk scores
-
-SCENARIO 2: Port Scan Detection (2 minutes)
---------------------------------------------
-1. Start the IDS/IPS system
-2. Run simulate_port_scan.py
-3. Show system detects suspicious scanning behavior
-4. Demonstrate MEDIUM/HIGH risk scores
-5. Show automatic decoy deployment (if enabled)
-
-SCENARIO 3: DoS Attack Detection (2 minutes)
----------------------------------------------
-1. Start the IDS/IPS system
-2. Run simulate_dos.py
-3. Show system detects flood patterns
-4. Demonstrate HIGH risk scores
-5. Show automatic firewall blocking (if prevention enabled)
-
-SCENARIO 4: PCAP Replay Analysis (2 minutes)
----------------------------------------------
-1. Start the IDS/IPS system
-2. Upload attack PCAP file via PCAP Replay tab
-3. Show system analyzes historical traffic
-4. Demonstrate attack classification
-5. Show detailed results and model agreement
-
-SCENARIO 5: Full Orchestration (3 minutes)
--------------------------------------------
-1. Start the IDS/IPS system
-2. Run demo_orchestrator.py
-3. Watch scripted demo sequence
-4. System automatically cycles through scenarios
-5. Demonstrates all features in sequence
-
-===============================================================================
-DEMO PREPARATION CHECKLIST
-===============================================================================
-
-[ ] IDS/IPS system running (run_demo.bat)
-[ ] Dashboard accessible at http://127.0.0.1:5000
-[ ] Network interface selected
-[ ] Capture started
-[ ] Attack simulation scripts tested
-[ ] PCAP files ready for replay
-[ ] Presentation file open
-[ ] Wireshark open (optional, for visualization)
-
-===============================================================================
-TROUBLESHOOTING
-===============================================================================
-
-Issue: Attack scripts not generating traffic
-Solution: Ensure capture is started on the correct interface
-
-Issue: System not detecting attacks
-Solution: Check that ML models are loaded and enabled in Model Settings
-
-Issue: Firewall blocking not working
-Solution: Run as Administrator, ensure prevention is enabled
-
-Issue: PCAP replay not working
-Solution: Ensure PCAP file format is correct, check file size
-
-===============================================================================
+MANUAL DOWNLOAD:
+---------------
+Wireshark - Packet visualization
+Download: https://www.wireshark.org/download.html
