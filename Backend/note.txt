@@ -1,6 +1,4 @@
-Insert backend here
-
-RUN THIS!!!!:
-
 cd C:\Users\pompk\Desktop\CSCI480
 .\.venv\Scripts\python.exe .\run_project.py
+
+ping 10.53.0.1 -n 40 -l 1472 -w 500 -f
