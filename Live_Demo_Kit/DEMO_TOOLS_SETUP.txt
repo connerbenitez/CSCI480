@@ -8,11 +8,7 @@ DOWNLOADED TOOLS (in downloads/ folder):
    Install: Run nmap-setup.exe
    Use: nmap -sS 127.0.0.1
 
-2. tcpreplay.zip - PCAP replay tool
-   Install: Extract tcpreplay.zip
-   Use: tcpreplay -i <interface> attack.pcap
-
-3. hping3.zip - DoS tool (requires compilation)
+2. hping3.zip - DoS tool (requires compilation)
    Note: Use nmap instead for demo
 
 MANUAL DOWNLOAD:
