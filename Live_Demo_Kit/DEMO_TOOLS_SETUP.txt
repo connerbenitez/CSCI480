@@ -8,10 +8,15 @@ DOWNLOADED TOOLS (in downloads/ folder):
    Install: Run nmap-setup.exe
    Use: nmap -sS 127.0.0.1
 
-2. hping3.zip - DoS tool (requires compilation)
-   Note: Use nmap instead for demo
+2. hping3.zip - DoS tool (source code only)
+   Note: Compiling on Windows requires C compiler + WinPcap - NOT feasible for automatic setup
+   Alternative: Use nmap for demo
 
 MANUAL DOWNLOAD:
 ---------------
 Wireshark - Packet visualization
 Download: https://www.wireshark.org/download.html
+
+tcpreplay - PCAP replay (if needed)
+Download: https://tcpreplay.appneta.com/
+Note: Download attempts failed - download manually if needed
