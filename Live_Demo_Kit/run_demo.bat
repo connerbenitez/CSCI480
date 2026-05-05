@@ -37,14 +37,7 @@ if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
 )
 
 echo.
-echo [4/5] Generating PCAP files for attack scenarios...
-cd /d C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit
-echo 7 | python generate_premade_packets.py
-echo [INFO] PCAP files generated in Live_Demo_Kit folder
-echo [INFO] Load these files into Capsa or Wireshark to replay attacks
-
-echo.
-echo [5/5] Demo Setup Complete!
+echo [4/4] Demo Setup Complete!
 echo ============================================================
 echo.
 echo DEMO TOOLS READY:
@@ -52,13 +45,14 @@ echo - IDS/IPS Dashboard: http://127.0.0.1:5000
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
     echo - Nmap: Scanning localhost (watch for detection)
 )
-echo - PCAP Files: port_scan.pcap, syn_flood.pcap, udp_flood.pcap, http_flood.pcap, mixed_attack.pcap
 echo.
 echo INSTRUCTIONS:
 echo 1. In dashboard: Start capture on network interface
 echo 2. Watch Nmap scan results appear in dashboard
-echo 3. Load PCAP files into Capsa or Wireshark to replay different attacks
-echo 4. Watch dashboard detect the attack traffic
+echo 3. Show Model Settings - 7 ML models
+echo 4. Show Defense & Prevention - decoys and firewall
+echo 5. Deploy a decoy (fake_ssh)
+echo 6. Stop capture
 echo.
 echo Press any key to close this window (tools remain open)...
 pause >nul
