@@ -34,7 +34,9 @@ timeout /t 10 /nobreak
 
 echo.
 echo [3/3] Launching PCAP Replay GUI Tool...
+cd /d Live_Demo_Kit
 start "PCAP Replay GUI" python replay_pcap_gui.py
+cd /d C:\Users\pompk\Desktop\CSCI480
 echo [INFO] PCAP Replay GUI opened
 
 echo.
