@@ -1185,7 +1185,6 @@ async function refreshDashboard() {
     el("alertsCount").textContent = analysis.alerts_count || 0;
     el("blockedCount").textContent = analysis.blocked_count || 0;
     el("anomalyCount").textContent = analysis.ae_anomalies?.count || 0;
-    el("agreementPct").textContent = `${(analysis.model_agreement?.pct || 0).toFixed(1)}%`;
     if (el("activeDecoysCount")) el("activeDecoysCount").textContent = analysis.active_decoy_count || 0;
     el("avgPps").textContent = analysis.feature_highlights?.avg_packets_per_sec || 0;
     el("avgBps").textContent = analysis.feature_highlights?.avg_bytes_per_sec || 0;
