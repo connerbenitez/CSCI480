@@ -27,17 +27,7 @@ echo [INFO] Wait 10 seconds for dashboard to fully load...
 timeout /t 10 /nobreak
 
 echo.
-echo [3/5] Launching Nmap (continuous scan loop)...
-if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
-    start "Nmap" cmd /k "cd /d C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit && nmap_continuous_scan.bat"
-    echo [INFO] Nmap continuously scanning localhost (127.0.0.1)
-    echo [INFO] Scans every 5 seconds - press Ctrl+C in Nmap window to stop
-) else (
-    echo [ERROR] Nmap not installed - skipping
-)
-
-echo.
-echo [4/5] Launching Capsa Packet Builder...
+echo [3/4] Launching Capsa Packet Builder...
 if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
     start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe"
     echo [INFO] Capsa Packet Builder opened
@@ -47,25 +37,24 @@ if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
 )
 
 echo.
-echo [5/5] Demo Setup Complete!
+echo [4/4] Demo Setup Complete!
 echo ============================================================
 echo.
 echo DEMO TOOLS READY:
 echo - IDS/IPS Dashboard: http://127.0.0.1:5000
-if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
-    echo - Nmap: Scanning localhost (watch for detection)
-)
 if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
     echo - Capsa: Packet Builder ready
 )
+echo - Nmap shortcut: Double-click to run scan when needed
 echo.
 echo INSTRUCTIONS:
 echo 1. In dashboard: Start capture on network interface
-echo 2. Watch Nmap scan results appear in dashboard
-echo 3. Show Model Settings - 7 ML models
-echo 4. Show Defense & Prevention - decoys and firewall
-echo 5. Deploy a decoy (fake_ssh)
-echo 6. Stop capture
+echo 2. Show Model Settings - 7 ML models
+echo 3. Show Defense & Prevention - decoys and firewall
+echo 4. Deploy a decoy (fake_ssh)
+echo 5. Double-click Nmap shortcut to run port scan
+echo 6. Watch dashboard detect the scan
+echo 7. Stop capture
 echo.
 echo Press any key to close this window (tools remain open)...
 pause >nul
