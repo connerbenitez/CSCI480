@@ -4,9 +4,8 @@ CSCI480 LAYERED IDS/IPS - LIVE DEMO
 
 START THE APP
 --------------
-1. Right-click run_demo.bat
-2. Select "Run as Administrator"
-3. Dashboard opens at http://127.0.0.1:5000
+1. Double-click run_demo.bat (run as Administrator)
+2. Dashboard opens at http://127.0.0.1:5000
 
 DEMO STEPS (5 minutes)
 ----------------------
@@ -17,11 +16,16 @@ DEMO STEPS (5 minutes)
 5. Deploy a decoy (fake_ssh)
 6. Stop capture
 
-ATTACK SIMULATION (optional)
------------------------------
-1. Install nmap from downloads/nmap-setup.exe
+ATTACK SIMULATION
+------------------
+1. Double-click Nmap shortcut (in this folder)
 2. Run: nmap -sS 127.0.0.1
 3. Watch system detect the scan
+
+PACKET GENERATION (optional)
+-----------------------------
+1. Double-click Capsa shortcut (in this folder)
+2. Use packet builder to generate traffic
 
 TROUBLESHOOTING
 ---------------
