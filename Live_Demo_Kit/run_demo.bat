@@ -27,11 +27,11 @@ echo [INFO] Wait 10 seconds for dashboard to fully load...
 timeout /t 10 /nobreak
 
 echo.
-echo [3/5] Launching Nmap (pre-configured for localhost scan)...
+echo [3/5] Launching Nmap (continuous scan loop)...
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
-    start "Nmap" cmd /k "cd /d C:\Program Files (x86)\Nmap && nmap -sS 127.0.0.1"
-    echo [INFO] Nmap scanning localhost (127.0.0.1)
-    echo [INFO] This will demonstrate port scan detection
+    start "Nmap" cmd /k "cd /d C:\Program Files (x86)\Nmap && echo Continuous scan loop - press Ctrl+C to stop && :loop && nmap -sS 127.0.0.1 && echo Waiting 5 seconds... && timeout /t 5 /nobreak && goto :loop"
+    echo [INFO] Nmap continuously scanning localhost (127.0.0.1)
+    echo [INFO] Scans every 5 seconds - press Ctrl+C in Nmap window to stop
 ) else (
     echo [ERROR] Nmap not installed - skipping
 )
