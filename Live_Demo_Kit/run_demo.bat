@@ -26,29 +26,19 @@ if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\Capsa.exe" (
 )
 
 echo.
-echo [2/4] Starting IDS/IPS System...
+echo [2/3] Starting IDS/IPS System...
 start "IDS/IPS Dashboard" cmd /k python run_project.py
 echo [INFO] Dashboard opening at http://127.0.0.1:5000
 echo [INFO] Wait 10 seconds for dashboard to fully load...
 timeout /t 10 /nobreak
 
 echo.
-echo [3/4] Launching Wireshark...
-if exist "C:\Program Files\Wireshark\Wireshark.exe" (
-    start "Wireshark" "C:\Program Files\Wireshark\Wireshark.exe"
-    echo [INFO] Wireshark opened
-    echo [INFO] Load PCAP files: File > Open > Select .pcap file
-) else (
-    echo [WARN] Wireshark not installed - skipping
-)
-
-echo.
-echo [4/4] Demo Setup Complete!
+echo [3/3] Demo Setup Complete!
 echo ============================================================
 echo.
 echo DEMO TOOLS READY:
 echo - IDS/IPS Dashboard: http://127.0.0.1:5000
-echo - Wireshark: Open PCAP files to view attack patterns
+echo - PCAP Replay Tool: replay_pcap.py (uses Scapy to send packets)
 echo - PCAP Files: port_scan.pcap, syn_flood.pcap, udp_flood.pcap, http_flood.pcap, mixed_attack.pcap
 echo.
 echo INSTRUCTIONS:
@@ -56,10 +46,9 @@ echo 1. In dashboard: Start capture on network interface
 echo 2. Show Model Settings - 7 ML models
 echo 3. Show Defense & Prevention - decoys and firewall
 echo 4. Deploy a decoy (fake_ssh)
-echo 5. In Wireshark: File > Open > Load PCAP file to analyze
-echo 6. Note: Wireshark is for viewing/analyzing, not sending packets
-echo 7. To send packets: Use project's built-in attack simulation
-echo 8. Stop capture
+echo 5. To replay attacks: python replay_pcap.py [filename.pcap]
+echo 6. Watch dashboard detect the attacks
+echo 7. Stop capture
 echo.
 echo Press any key to close this window (tools remain open)...
 pause >nul
