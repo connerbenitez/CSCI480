@@ -37,14 +37,10 @@ if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
 )
 
 echo.
-echo [4/5] Launching Capsa Packet Builder...
-if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
-    start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe"
-    echo [INFO] Capsa Packet Builder opened
-    echo [INFO] Use this to generate custom attack traffic
-) else (
-    echo [ERROR] Capsa not installed - skipping
-)
+echo [4/5] Starting Premade Packet Generator...
+start "Packet Generator" cmd /k "cd /d C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit && echo Premade Packet Generator - choose packet type to send && python generate_premade_packets.py"
+echo [INFO] Packet Generator opened
+echo [INFO] Choose packet type to generate attack traffic
 
 echo.
 echo [5/5] Demo Setup Complete!
@@ -55,14 +51,13 @@ echo - IDS/IPS Dashboard: http://127.0.0.1:5000
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
     echo - Nmap: Scanning localhost (watch for detection)
 )
-if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
-    echo - Capsa: Packet Builder ready
-)
+echo - Packet Generator: Choose packet type to send
 echo.
 echo INSTRUCTIONS:
 echo 1. In dashboard: Start capture on network interface
 echo 2. Watch Nmap scan results appear in dashboard
-echo 3. Use Capsa to generate additional traffic if needed
+echo 3. In Packet Generator: Choose packet type (SYN flood, UDP flood, HTTP flood, port scan, or all)
+echo 4. Watch dashboard detect the attack traffic
 echo.
 echo Press any key to close this window (tools remain open)...
 pause >nul

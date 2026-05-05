@@ -8,7 +8,7 @@ START THE APP (AUTO-LAUNCH)
 2. Everything launches automatically:
    - IDS/IPS Dashboard at http://127.0.0.1:5000
    - Nmap continuously scanning localhost (every 5 seconds)
-   - Capsa Packet Builder (for custom traffic)
+   - Packet Generator (premade attack packets)
 
 TOOL EXPLANATIONS
 -----------------
@@ -19,12 +19,12 @@ NMAP (Network Mapper):
 - How: It's already running continuously - just point to the Nmap window
 - Explain: "Nmap is performing continuous port scans on localhost. The IDS/IPS detects this scanning behavior and flags it as suspicious."
 
-COLASOFT CAPSA (Packet Builder):
-- What: Network packet generation and analysis tool
-- Use: Creates custom attack traffic for testing
-- When: Use if you want to demonstrate custom traffic generation
-- How: Open Capsa Packet Builder, create packets, send to target
-- Explain: "Capsa allows us to craft custom network traffic to test how the system responds to specific attack patterns."
+PACKET GENERATOR (Python/Scapy):
+- What: Python script using Scapy to generate premade attack packets
+- Use: Sends pre-configured attack traffic patterns
+- When: Use to demonstrate attack detection with specific packet types
+- How: Choose packet type (SYN flood, UDP flood, HTTP flood, port scan, or all)
+- Explain: "The packet generator sends pre-configured attack patterns to test the system's detection capabilities."
 
 DEMO STEPS (5 minutes)
 ----------------------
