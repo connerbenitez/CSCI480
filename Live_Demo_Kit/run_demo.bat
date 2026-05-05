@@ -41,7 +41,7 @@ echo [4/5] Launching Capsa Packet Builder...
 if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
     start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe"
     echo [INFO] Capsa Packet Builder opened
-    echo [INFO] Use this to generate custom attack traffic
+    echo [IMPORTANT] In Capsa: Select WiFi interface (NOT Ethernet)
 ) else (
     echo [ERROR] Capsa not installed - skipping
 )
