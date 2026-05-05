@@ -10,19 +10,38 @@ START THE APP (AUTO-LAUNCH)
    - Nmap continuously scanning localhost (every 5 seconds)
    - Capsa Packet Builder (for custom traffic)
 
+TOOL EXPLANATIONS
+-----------------
+NMAP (Network Mapper):
+- What: Industry-standard network scanning tool
+- Use: Simulates port scanning attacks to test detection
+- When: Use during demo to show the system detecting scan patterns
+- How: It's already running continuously - just point to the Nmap window
+- Explain: "Nmap is performing continuous port scans on localhost. The IDS/IPS detects this scanning behavior and flags it as suspicious."
+
+COLASOFT CAPSA (Packet Builder):
+- What: Network packet generation and analysis tool
+- Use: Creates custom attack traffic for testing
+- When: Use if you want to demonstrate custom traffic generation
+- How: Open Capsa Packet Builder, create packets, send to target
+- Explain: "Capsa allows us to craft custom network traffic to test how the system responds to specific attack patterns."
+
 DEMO STEPS (5 minutes)
 ----------------------
 1. In dashboard: Start capture on network interface
-2. Watch Nmap scan results appear (auto-scanning localhost)
-3. Show Model Settings - 7 ML models
-4. Show Defense & Prevention - decoys and firewall
-5. Deploy a decoy (fake_ssh)
-6. Stop capture
+2. Explain: "We're starting packet capture to monitor network traffic in real-time"
+3. Show Nmap scanning: "Nmap is continuously scanning ports - watch the dashboard detect this"
+4. Show results: "The system identifies the port scan and assigns it a risk score"
+5. Show Model Settings - 7 ML models
+6. Show Defense & Prevention - decoys and firewall
+7. Deploy a decoy (fake_ssh)
+8. Explain: "We deploy a fake SSH decoy to confuse attackers"
+9. Stop capture
 
 MANUAL TOOL ACCESS
 ------------------
-- Nmap shortcut - for custom scans
-- Capsa shortcut - for packet builder
+- Nmap shortcut - for custom scans (if needed)
+- Capsa shortcut - for packet builder (if needed)
 
 TROUBLESHOOTING
 ---------------
