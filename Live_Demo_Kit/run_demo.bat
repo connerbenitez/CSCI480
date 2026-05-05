@@ -5,12 +5,18 @@ echo ============================================================
 echo.
 
 cd /d C:\Users\pompk\Desktop\CSCI480
-
+echo.
 echo [1/5] Checking dependencies...
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
     echo [OK] Nmap installed
 ) else (
-    echo [WARN] Nmap not found - please install from downloads\nmap-setup.exe
+    echo [WARN] Nmap not found - installing Zenmap...
+    if exist "Live_Demo_Kit\downloads\zenmap-setup.exe" (
+        start /wait "" "Live_Demo_Kit\downloads\zenmap-setup.exe"
+        echo [INFO] Zenmap installation complete
+    ) else (
+        echo [ERROR] Zenmap installer not found
+    )
 )
 
 if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\Capsa.exe" (
