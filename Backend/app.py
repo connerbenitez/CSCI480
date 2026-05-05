@@ -3020,14 +3020,14 @@ def analysis_snapshot() -> dict:
             "primary_value": sum(ae_flags),
             "secondary_value": f"{(np.mean(ae_scores) if ae_scores else 0):.4f}",
             "secondary_label": "avg reconstruction score",
-            "pct": sum(ae_flags) / len(results) * 100,
+            "pct": sum(ae_flags) / len(results) * 100 if results else 0,
         },
         "isolation_forest": {
             "metric_label": "ISO high anomalies",
             "primary_value": sum(iso_high),
             "secondary_value": f"{(np.mean(iso_scores) if iso_scores else 0):.4f}",
             "secondary_label": "avg normalized score",
-            "pct": sum(iso_high) / len(results) * 100,
+            "pct": sum(iso_high) / len(results) * 100 if results else 0,
             "high_count": sum(iso_high),
         },
         "kmeans": {
@@ -3035,7 +3035,7 @@ def analysis_snapshot() -> dict:
             "primary_value": sum(km_high),
             "secondary_value": f"{(np.mean(km_scores) if km_scores else 0):.4f}",
             "secondary_label": "avg normalized score",
-            "pct": sum(km_high) / len(results) * 100,
+            "pct": sum(km_high) / len(results) * 100 if results else 0,
             "high_count": sum(km_high),
         },
         "random_forest": {
@@ -3043,28 +3043,28 @@ def analysis_snapshot() -> dict:
             "primary_value": sum(rf_non_benign),
             "secondary_value": rf_raw_labels.most_common(1)[0][0] if rf_raw_labels else "BENIGN",
             "secondary_label": "top raw label",
-            "pct": sum(rf_non_benign) / len(results) * 100,
+            "pct": sum(rf_non_benign) / len(results) * 100 if results else 0,
         },
         "gradient_boosted_tree": {
             "metric_label": "GBDT non-benign",
             "primary_value": sum(gbdt_non_benign),
             "secondary_value": gbdt_labels.most_common(1)[0][0] if gbdt_labels else "BENIGN",
             "secondary_label": "top label",
-            "pct": sum(gbdt_non_benign) / len(results) * 100,
+            "pct": sum(gbdt_non_benign) / len(results) * 100 if results else 0,
         },
         "ppo_policy": {
             "metric_label": "PPO high risk",
             "primary_value": sum(ppo_high),
             "secondary_value": ppo_labels.most_common(1)[0][0] if ppo_labels else "normal",
             "secondary_label": "top risk",
-            "pct": sum(ppo_high) / len(results) * 100,
+            "pct": sum(ppo_high) / len(results) * 100 if results else 0,
         },
         "gnn_detector": {
             "metric_label": "GNN high-confidence attacks",
             "primary_value": sum(gnn_attack),
             "secondary_value": gnn_labels.most_common(1)[0][0] if gnn_labels else "normal",
             "secondary_label": "top output",
-            "pct": sum(gnn_attack) / len(results) * 100,
+            "pct": sum(gnn_attack) / len(results) * 100 if results else 0,
         },
     }
 
