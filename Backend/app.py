@@ -2972,19 +2972,19 @@ def analysis_snapshot() -> dict:
     iso_high = [str(o.get("iso_risk", "normal")).lower() == "high" for o in raw_outputs]
     km_high = [str(o.get("kmeans_risk", "normal")).lower() == "high" for o in raw_outputs]
     rf_non_benign = [str(o.get("rf_labels", "BENIGN")).upper() != "BENIGN" for o in raw_outputs]
-    gbdt_non_benign = [str(o.get("gbdt_labels", "BENIGN")).upper() != "BENIGN" for o in raw_outputs]
-    ppo_high = [str(o.get("ppo_risk", "normal")).lower() == "high" for o in raw_outputs]
+    gbdt_non_benign = [str(r.get("gbdt_labels", "BENIGN")).upper() != "BENIGN" for r in results]
+    ppo_high = [str(r.get("ppo_risk", "normal")).lower() == "high" for r in results]
     gnn_attack = [
-        str(o.get("gnn_label", "normal")).lower() == "attack" and float(o.get("gnn_attack_prob", 0) or 0) >= 0.85
-        for o in raw_outputs
+        str(r.get("gnn_label", "normal")).lower() == "attack" and float(r.get("gnn_attack_prob", 0) or 0) >= 0.85
+        for r in results
     ]
     iso_scores = [float(o.get("iso_score", 0) or 0) for o in raw_outputs if o.get("iso_score") is not None]
     km_scores = [float(o.get("kmeans_score", 0) or 0) for o in raw_outputs if o.get("kmeans_score") is not None]
     ae_scores = [float(o.get("ae_score", 0) or 0) for o in raw_outputs if o.get("ae_score") is not None]
     rf_raw_labels = Counter(str(o.get("rf_labels", "BENIGN")) for o in raw_outputs)
-    gbdt_labels = Counter(str(o.get("gbdt_labels", "BENIGN")) for o in raw_outputs if o.get("gbdt_labels"))
-    ppo_labels = Counter(str(o.get("ppo_risk", "normal")) for o in raw_outputs if o.get("ppo_risk"))
-    gnn_labels = Counter(str(o.get("gnn_label", "normal")) for o in raw_outputs if o.get("gnn_label"))
+    gbdt_labels = Counter(str(r.get("gbdt_labels", "BENIGN")) for r in results if r.get("gbdt_labels"))
+    ppo_labels = Counter(str(r.get("ppo_risk", "normal")) for r in results if r.get("ppo_risk"))
+    gnn_labels = Counter(str(r.get("gnn_label", "normal")) for r in results if r.get("gnn_label"))
     severity_timeline = []
     bucketed = {}
     for r in results:
