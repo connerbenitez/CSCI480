@@ -37,13 +37,26 @@ if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
 )
 
 echo.
-echo [4/4] Demo Setup Complete!
+echo [4/5] Launching Capsa Packet Builder...
+if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
+    start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe"
+    echo [INFO] Capsa Packet Builder opened
+    echo [INFO] Use this to generate custom attack traffic
+) else (
+    echo [ERROR] Capsa not installed - skipping
+)
+
+echo.
+echo [5/5] Demo Setup Complete!
 echo ============================================================
 echo.
 echo DEMO TOOLS READY:
 echo - IDS/IPS Dashboard: http://127.0.0.1:5000
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
     echo - Nmap: Scanning localhost (watch for detection)
+)
+if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
+    echo - Capsa: Packet Builder ready
 )
 echo.
 echo INSTRUCTIONS:
