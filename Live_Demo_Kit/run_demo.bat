@@ -37,10 +37,11 @@ if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
 )
 
 echo.
-echo [4/5] Starting Premade Packet Generator...
-start "Packet Generator" cmd /k "cd /d C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit && echo Premade Packet Generator - choose packet type to send && python generate_premade_packets.py"
-echo [INFO] Packet Generator opened
-echo [INFO] Choose packet type to generate attack traffic
+echo [4/5] Generating PCAP files for attack scenarios...
+cd /d C:\Users\pompk\Desktop\CSCI480\Live_Demo_Kit
+echo 7 | python generate_premade_packets.py
+echo [INFO] PCAP files generated in Live_Demo_Kit folder
+echo [INFO] Load these files into Capsa or Wireshark to replay attacks
 
 echo.
 echo [5/5] Demo Setup Complete!
@@ -51,12 +52,12 @@ echo - IDS/IPS Dashboard: http://127.0.0.1:5000
 if exist "C:\Program Files (x86)\Nmap\nmap.exe" (
     echo - Nmap: Scanning localhost (watch for detection)
 )
-echo - Packet Generator: Choose packet type to send
+echo - PCAP Files: port_scan.pcap, syn_flood.pcap, udp_flood.pcap, http_flood.pcap, mixed_attack.pcap
 echo.
 echo INSTRUCTIONS:
 echo 1. In dashboard: Start capture on network interface
 echo 2. Watch Nmap scan results appear in dashboard
-echo 3. In Packet Generator: Choose packet type (SYN flood, UDP flood, HTTP flood, port scan, or all)
+echo 3. Load PCAP files into Capsa or Wireshark to replay different attacks
 echo 4. Watch dashboard detect the attack traffic
 echo.
 echo Press any key to close this window (tools remain open)...

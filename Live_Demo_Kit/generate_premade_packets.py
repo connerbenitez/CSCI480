@@ -1,79 +1,150 @@
 #!/usr/bin/env python3
 """
-Generate Premade Attack Packets for Demo
+Generate PCAP Files for Demo Attack Scenarios
 CSCI480 Layered IDS/IPS - Senior Capstone Project
-Uses Scapy to generate attack traffic patterns
+Creates PCAP files that can be loaded into Capsa or other packet analysis tools
 """
 
 from scapy.all import *
 import time
-import random
 
-def generate_syn_flood(target_ip, target_port, count=100):
-    """Generate SYN flood packets"""
-    print(f"[INFO] Generating {count} SYN flood packets to {target_ip}:{target_port}")
-    for i in range(count):
-        send(IP(dst=target_ip)/TCP(dport=target_port, flags="S"), verbose=False)
-    print(f"[DONE] Sent {count} SYN flood packets")
+def create_port_scan_pcap(filename="port_scan.pcap"):
+    """Create PCAP file with port scan traffic"""
+    print(f"[INFO] Creating port scan PCAP: {filename}")
+    packets = []
+    target_ip = "192.168.1.100"
+    common_ports = [21, 22, 23, 25, 53, 80, 110, 443, 445, 3306]
+    
+    for port in common_ports:
+        # SYN packet
+        packets.append(IP(dst=target_ip)/TCP(dport=port, flags="S"))
+        # ACK packet (complete handshake)
+        packets.append(IP(dst=target_ip)/TCP(dport=port, flags="A"))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
 
-def generate_udp_flood(target_ip, target_port, count=100):
-    """Generate UDP flood packets"""
-    print(f"[INFO] Generating {count} UDP flood packets to {target_ip}:{target_port}")
-    for i in range(count):
-        send(IP(dst=target_ip)/UDP(dport=target_port)/Raw(b"test data"), verbose=False)
-    print(f"[DONE] Sent {count} UDP flood packets")
+def create_syn_flood_pcap(filename="syn_flood.pcap"):
+    """Create PCAP file with SYN flood attack"""
+    print(f"[INFO] Creating SYN flood PCAP: {filename}")
+    packets = []
+    target_ip = "192.168.1.100"
+    target_port = 80
+    
+    for i in range(200):
+        packets.append(IP(dst=target_ip, src=f"192.168.1.{i % 255}")/TCP(dport=target_port, flags="S", sport=12345+i))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
 
-def generate_http_flood(target_ip, target_port, count=50):
-    """Generate HTTP flood packets"""
-    print(f"[INFO] Generating {count} HTTP flood packets to {target_ip}:{target_port}")
-    for i in range(count):
-        send(IP(dst=target_ip)/TCP(dport=target_port, flags="S")/Raw(b"GET / HTTP/1.1\r\nHost: target\r\n\r\n"), verbose=False)
-    print(f"[DONE] Sent {count} HTTP flood packets")
+def create_udp_flood_pcap(filename="udp_flood.pcap"):
+    """Create PCAP file with UDP flood attack"""
+    print(f"[INFO] Creating UDP flood PCAP: {filename}")
+    packets = []
+    target_ip = "192.168.1.100"
+    target_port = 53
+    
+    for i in range(200):
+        packets.append(IP(dst=target_ip, src=f"192.168.1.{i % 255}")/UDP(dport=target_port, sport=54321+i)/Raw(b"test data"))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
 
-def generate_port_scan(target_ip, ports):
-    """Generate port scan traffic"""
-    print(f"[INFO] Generating port scan traffic to {target_ip}")
-    for port in ports:
-        send(IP(dst=target_ip)/TCP(dport=port, flags="S"), verbose=False)
-    print(f"[DONE] Sent scan packets to {len(ports)} ports")
+def create_http_flood_pcap(filename="http_flood.pcap"):
+    """Create PCAP file with HTTP flood attack"""
+    print(f"[INFO] Creating HTTP flood PCAP: {filename}")
+    packets = []
+    target_ip = "192.168.1.100"
+    target_port = 80
+    
+    for i in range(100):
+        http_request = b"GET / HTTP/1.1\r\nHost: target\r\n\r\n"
+        packets.append(IP(dst=target_ip, src=f"192.168.1.{i % 255}")/TCP(dport=target_port, flags="PA", sport=54321+i)/Raw(http_request))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
+
+def create_benign_traffic_pcap(filename="benign_traffic.pcap"):
+    """Create PCAP file with benign traffic"""
+    print(f"[INFO] Creating benign traffic PCAP: {filename}")
+    packets = []
+    
+    # Normal HTTP traffic
+    for i in range(20):
+        http_request = b"GET /page.html HTTP/1.1\r\nHost: example.com\r\n\r\n"
+        packets.append(IP(dst="192.168.1.100")/TCP(dport=80, flags="PA", sport=54321+i)/Raw(http_request))
+    
+    # Normal DNS traffic
+    for i in range(10):
+        packets.append(IP(dst="192.168.1.100")/UDP(dport=53, sport=54321+i)/Raw(b"\x00\x01\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
+
+def create_mixed_attack_pcap(filename="mixed_attack.pcap"):
+    """Create PCAP file with mixed attack patterns"""
+    print(f"[INFO] Creating mixed attack PCAP: {filename}")
+    packets = []
+    target_ip = "192.168.1.100"
+    
+    # Port scan
+    for port in [21, 22, 23, 25, 53, 80, 443]:
+        packets.append(IP(dst=target_ip)/TCP(dport=port, flags="S"))
+    
+    # SYN flood
+    for i in range(50):
+        packets.append(IP(dst=target_ip, src=f"192.168.1.{i % 255}")/TCP(dport=80, flags="S", sport=12345+i))
+    
+    # UDP flood
+    for i in range(30):
+        packets.append(IP(dst=target_ip, src=f"192.168.1.{(i+50) % 255}")/UDP(dport=53, sport=54321+i)/Raw(b"test data"))
+    
+    wrpcap(filename, packets)
+    print(f"[DONE] Created {filename} with {len(packets)} packets")
 
 def main():
     print("=" * 70)
-    print("CSCI480 LAYERED IDS/IPS - PREMADE PACKET GENERATOR")
+    print("CSCI480 LAYERED IDS/IPS - PCAP FILE GENERATOR")
     print("=" * 70)
     print()
+    print("This script creates PCAP files for different attack scenarios.")
+    print("These files can be loaded into Capsa, Wireshark, or other packet tools.")
+    print()
     
-    target_ip = "127.0.0.1"  # Localhost for demo
-    
-    print("Choose packet type:")
-    print("1. SYN Flood (port 80)")
-    print("2. UDP Flood (port 53)")
-    print("3. HTTP Flood (port 80)")
-    print("4. Port Scan (common ports)")
-    print("5. All of the above")
+    print("Choose PCAP file to create:")
+    print("1. Port Scan (port_scan.pcap)")
+    print("2. SYN Flood (syn_flood.pcap)")
+    print("3. UDP Flood (udp_flood.pcap)")
+    print("4. HTTP Flood (http_flood.pcap)")
+    print("5. Benign Traffic (benign_traffic.pcap)")
+    print("6. Mixed Attack (mixed_attack.pcap)")
+    print("7. Create All PCAP Files")
     print()
     
     try:
-        choice = input("Enter choice (1-5): ").strip()
+        choice = input("Enter choice (1-7): ").strip()
         
         if choice == "1":
-            generate_syn_flood(target_ip, 80, count=100)
+            create_port_scan_pcap()
         elif choice == "2":
-            generate_udp_flood(target_ip, 53, count=100)
+            create_syn_flood_pcap()
         elif choice == "3":
-            generate_http_flood(target_ip, 80, count=50)
+            create_udp_flood_pcap()
         elif choice == "4":
-            common_ports = [21, 22, 23, 25, 53, 80, 110, 443, 445, 3306]
-            generate_port_scan(target_ip, common_ports)
+            create_http_flood_pcap()
         elif choice == "5":
-            print("[INFO] Generating all packet types...")
-            generate_port_scan(target_ip, [21, 22, 23, 25, 53, 80, 110, 443, 445, 3306])
-            time.sleep(1)
-            generate_syn_flood(target_ip, 80, count=50)
-            time.sleep(1)
-            generate_udp_flood(target_ip, 53, count=50)
-            time.sleep(1)
-            generate_http_flood(target_ip, 80, count=30)
+            create_benign_traffic_pcap()
+        elif choice == "6":
+            create_mixed_attack_pcap()
+        elif choice == "7":
+            print("[INFO] Creating all PCAP files...")
+            create_port_scan_pcap()
+            create_syn_flood_pcap()
+            create_udp_flood_pcap()
+            create_http_flood_pcap()
+            create_benign_traffic_pcap()
+            create_mixed_attack_pcap()
+            print("[DONE] All PCAP files created!")
         else:
             print("[INFO] Invalid choice")
             

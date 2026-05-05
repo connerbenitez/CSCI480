@@ -8,7 +8,7 @@ START THE APP (AUTO-LAUNCH)
 2. Everything launches automatically:
    - IDS/IPS Dashboard at http://127.0.0.1:5000
    - Nmap continuously scanning localhost (every 5 seconds)
-   - Packet Generator (premade attack packets)
+   - PCAP files generated (port_scan.pcap, syn_flood.pcap, udp_flood.pcap, http_flood.pcap, mixed_attack.pcap)
 
 TOOL EXPLANATIONS
 -----------------
@@ -19,12 +19,18 @@ NMAP (Network Mapper):
 - How: It's already running continuously - just point to the Nmap window
 - Explain: "Nmap is performing continuous port scans on localhost. The IDS/IPS detects this scanning behavior and flags it as suspicious."
 
-PACKET GENERATOR (Python/Scapy):
-- What: Python script using Scapy to generate premade attack packets
-- Use: Sends pre-configured attack traffic patterns
-- When: Use to demonstrate attack detection with specific packet types
-- How: Choose packet type (SYN flood, UDP flood, HTTP flood, port scan, or all)
-- Explain: "The packet generator sends pre-configured attack patterns to test the system's detection capabilities."
+PCAP FILES (Attack Scenarios):
+- What: Pre-generated PCAP files containing different attack patterns
+- Use: Load into Capsa, Wireshark, or other packet analysis tools to replay attacks
+- When: Use to demonstrate detection of specific attack types
+- How: Double-click Capsa shortcut, File > Open, select PCAP file, use packet player
+- Files:
+  - port_scan.pcap - Port scanning attack
+  - syn_flood.pcap - SYN flood DoS attack
+  - udp_flood.pcap - UDP flood DoS attack
+  - http_flood.pcap - HTTP flood attack
+  - mixed_attack.pcap - Multiple attack patterns
+- Explain: "These PCAP files contain pre-captured attack traffic. We load them into Capsa to replay the attacks and demonstrate detection."
 
 DEMO STEPS (5 minutes)
 ----------------------
@@ -32,11 +38,12 @@ DEMO STEPS (5 minutes)
 2. Explain: "We're starting packet capture to monitor network traffic in real-time"
 3. Show Nmap scanning: "Nmap is continuously scanning ports - watch the dashboard detect this"
 4. Show results: "The system identifies the port scan and assigns it a risk score"
-5. Show Model Settings - 7 ML models
-6. Show Defense & Prevention - decoys and firewall
-7. Deploy a decoy (fake_ssh)
-8. Explain: "We deploy a fake SSH decoy to confuse attackers"
-9. Stop capture
+5. Load PCAP file: "Open Capsa, load port_scan.pcap to show different attack detection"
+6. Show Model Settings - 7 ML models
+7. Show Defense & Prevention - decoys and firewall
+8. Deploy a decoy (fake_ssh)
+9. Explain: "We deploy a fake SSH decoy to confuse attackers"
+10. Stop capture
 
 MANUAL TOOL ACCESS
 ------------------
