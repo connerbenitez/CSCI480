@@ -7,16 +7,12 @@ DOWNLOADED TOOLS (in downloads/ folder):
 1. nmap-setup.exe - Port scanning tool
    Install: Run nmap-setup.exe
    Use: nmap -sS 127.0.0.1
+   Note: Includes nping for packet generation (similar to hping3)
 
-2. hping3.zip - DoS tool (source code only)
+2. packet_builder.exe - Colasoft Capsa Free
+   Install: Run packet_builder.exe
+   Use: Packet generation and analysis tool
+
+3. hping3.zip - DoS tool (source code only)
    Note: Compiling on Windows requires C compiler + WinPcap - NOT feasible for automatic setup
-   Alternative: Use nmap for demo
-
-MANUAL DOWNLOAD:
----------------
-Wireshark - Packet visualization
-Download: https://www.wireshark.org/download.html
-
-tcpreplay - PCAP replay (if needed)
-Download: https://tcpreplay.appneta.com/
-Note: Download attempts failed - download manually if needed
+   Alternative: Use nping (included with nmap)
