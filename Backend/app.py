@@ -82,6 +82,7 @@ if str(BASE_DIR) not in sys.path:
 
 from attack_simulator import available_attack_types, simulate_attack
 from decoy_manager import DecoyManager
+from real_service_monitor import REAL_SERVICE_MONITOR, start_real_service_monitor
 from ips_actions import block_ip as firewall_block_ip
 from ips_actions import block_ip_inbound as firewall_block_ip_inbound
 from ips_actions import normalize_ip, unblock_ip as firewall_unblock_ip
@@ -93,6 +94,31 @@ CORS(app)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 DECOY_MANAGER = DecoyManager()
 atexit.register(DECOY_MANAGER.stop_all)
+
+# Start real service monitor
+start_real_service_monitor()
+
+# Add callback to feed real service events into IDS system
+def handle_real_service_events(events):
+    """Handle events from real services and feed them into IDS."""
+    for event in events:
+        # Convert real service event to decoy event format
+        decoy_event = {
+            "timestamp": event.get("timestamp"),
+            "profile_id": event.get("service_name", "").lower(),
+            "label": event.get("service_name", ""),
+            "listener_host": "0.0.0.0",
+            "listener_port": event.get("service_port", 0),
+            "source_ip": event.get("source_ip"),
+            "source_port": event.get("source_port", 0),
+            "payload_preview": event.get("details", {}).get("client_banner", "") or event.get("event_type", ""),
+            "payload_size": 0,
+            "auto_deployed": False,
+            "reason": f"Real service {event.get('event_type')}",
+        }
+        DECOY_MANAGER._record_event(decoy_event)
+
+REAL_SERVICE_MONITOR.add_event_handler(handle_real_service_events)
 
 
 def install_pickle_compat_aliases() -> None:

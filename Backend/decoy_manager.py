@@ -20,33 +20,45 @@ def _to_preview(data: bytes, limit: int = 96) -> str:
 
 
 DECOY_LIBRARY: dict[str, dict] = {
-    "fake_ssh": {
-        "label": "Fake SSH",
-        "description": "Low-interaction SSH banner and prompt decoy.",
+    "real_ssh": {
+        "label": "Real SSH",
+        "description": "Legitimate SSH server with IDS integration for dual-purpose use.",
         "port": 2222,
         "response_kind": "ssh",
         "default_reason": "Suspicious access against admin-style ports.",
+        "is_real_service": True,
+        "service_module": "real_ssh_server",
+        "service_class": "IDSAwareSSHServer",
     },
-    "fake_http_admin": {
-        "label": "Fake HTTP Admin",
-        "description": "Minimal web admin login decoy.",
-        "port": 8088,
+    "real_http": {
+        "label": "Real HTTP",
+        "description": "Legitimate HTTP server with IDS integration for dual-purpose use.",
+        "port": 8888,
         "response_kind": "http",
         "default_reason": "Suspicious web probing or admin panel discovery.",
+        "is_real_service": True,
+        "service_module": "real_http_server",
+        "service_class": "RealHTTPServer",
     },
-    "fake_database": {
-        "label": "Fake Database",
-        "description": "Minimal generic database listener decoy.",
-        "port": 33060,
+    "real_database": {
+        "label": "Real Database",
+        "description": "Legitimate database server with IDS integration for dual-purpose use.",
+        "port": 3307,
         "response_kind": "database",
         "default_reason": "Suspicious database service probing.",
+        "is_real_service": True,
+        "service_module": "real_database_server",
+        "service_class": "IDSAwareDatabaseServer",
     },
-    "fake_modbus": {
-        "label": "Fake Modbus",
-        "description": "Minimal industrial protocol-style decoy listener.",
-        "port": 15020,
+    "real_industrial": {
+        "label": "Real Industrial",
+        "description": "Legitimate industrial protocol server with IDS integration for dual-purpose use.",
+        "port": 503,
         "response_kind": "industrial",
         "default_reason": "Suspicious industrial control service probing.",
+        "is_real_service": True,
+        "service_module": "real_industrial_server",
+        "service_class": "IDSAwareIndustrialServer",
     },
 }
 
@@ -179,6 +191,42 @@ class DecoyManager:
                     "decoy": self._public_decoy_payload(existing),
                 }
 
+        # Check if this is a real service
+        is_real_service = profile.get("is_real_service", False)
+        
+        if is_real_service:
+            # For real services, just track them (they're already running externally)
+            listener_host = "0.0.0.0"
+            listener_port = int(profile["port"])
+            reason_text = reason or str(profile.get("default_reason", "") or "Operator deployment")
+            
+            metadata = {
+                "profile_id": profile_key,
+                "label": str(profile["label"]),
+                "description": str(profile.get("description", "")),
+                "listener_host": listener_host,
+                "listener_port": listener_port,
+                "response_kind": str(profile.get("response_kind", "")),
+                "reason": reason_text,
+                "auto_deployed": bool(auto_deployed),
+                "source_ips": [source_ip] if source_ip else [],
+                "deployed_at": now_iso(),
+                "last_requested_at": now_iso(),
+                "last_event_at": None,
+                "event_count": 0,
+                "is_real_service": True,
+                "_server": None,
+                "_thread": None,
+            }
+            with self._lock:
+                self._active[profile_key] = metadata
+            return {
+                "success": True,
+                "message": f"{profile['label']} (real service) registered for monitoring.",
+                "decoy": self._public_decoy_payload(metadata),
+            }
+        
+        # For fake decoys (original behavior)
         listener_host = "0.0.0.0"
         listener_port = int(profile["port"])
         reason_text = reason or str(profile.get("default_reason", "") or "Operator deployment")
@@ -220,6 +268,7 @@ class DecoyManager:
             "last_requested_at": now_iso(),
             "last_event_at": None,
             "event_count": 0,
+            "is_real_service": False,
             "_server": server,
             "_thread": thread,
         }
