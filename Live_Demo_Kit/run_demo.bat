@@ -33,12 +33,21 @@ echo [INFO] Wait 10 seconds for dashboard to fully load...
 timeout /t 10 /nobreak
 
 echo.
-echo [3/3] Demo Setup Complete!
+echo [3/4] Installing PCAP Replay Tool...
+if exist "Live_Demo_Kit\downloads\preplay.exe" (
+    start /wait "" "Live_Demo_Kit\downloads\preplay.exe"
+    echo [INFO] PreReplay installed
+) else (
+    echo [ERROR] PreReplay not found
+)
+
+echo.
+echo [4/4] Demo Setup Complete!
 echo ============================================================
 echo.
 echo DEMO TOOLS READY:
 echo - IDS/IPS Dashboard: http://127.0.0.1:5000
-echo - PCAP Replay Tool: replay_pcap.py (uses Scapy to send packets)
+echo - PreReplay: PCAP replay software for sending attack traffic
 echo - PCAP Files: port_scan.pcap, syn_flood.pcap, udp_flood.pcap, http_flood.pcap, mixed_attack.pcap
 echo.
 echo INSTRUCTIONS:
@@ -46,7 +55,7 @@ echo 1. In dashboard: Start capture on network interface
 echo 2. Show Model Settings - 7 ML models
 echo 3. Show Defense & Prevention - decoys and firewall
 echo 4. Deploy a decoy (fake_ssh)
-echo 5. To replay attacks: python replay_pcap.py [filename.pcap]
+echo 5. In PreReplay: File > Open > Select .pcap file > Click Replay
 echo 6. Watch dashboard detect the attacks
 echo 7. Stop capture
 echo.
