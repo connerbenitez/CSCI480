@@ -27,10 +27,10 @@ echo [INFO] Wait 10 seconds for dashboard to fully load...
 timeout /t 10 /nobreak
 
 echo.
-echo [3/4] Launching Capsa Packet Builder...
-if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
-    start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe"
-    echo [INFO] Capsa Packet Builder opened
+echo [3/4] Launching Capsa...
+if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\Capsa.exe" (
+    start "Capsa" "C:\Program Files\Colasoft Capsa 11 Free Edition\Capsa.exe"
+    echo [INFO] Capsa opened
     echo [IMPORTANT] In Capsa: Select WiFi interface (NOT Ethernet)
 ) else (
     echo [ERROR] Capsa not installed - skipping
