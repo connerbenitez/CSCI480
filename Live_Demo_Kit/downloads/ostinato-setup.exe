@@ -1,0 +1,937 @@
+<!doctype html>
+<!--[if lt IE 7]><html class="no-js lt-ie9 lt-ie8 lt-ie7" lang="en"> <![endif]-->
+<!--[if (IE 7)&!(IEMobile)]><html class="no-js lt-ie9 lt-ie8" lang="en"><![endif]-->
+<!--[if (IE 8)&!(IEMobile)]><html class="no-js lt-ie9" lang="en"><![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en"><!--<![endif]-->
+<head>
+<meta charset="utf-8">
+<title>Pricing</title>
+<meta name="description" content="Windows, Linux, MacOS; Cross-platform GUI and Python API. RFC 2544. VM Appliance. CML, GNS3, EVE-NG and Containerlab appliances. High speed line-rate add-on.">
+
+
+
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-MSMLH6');</script>
+<!-- End Google Tag Manager -->
+
+
+
+<!-- Twitter Cards -->
+<meta name="twitter:title" content="Pricing">
+<meta name="twitter:description" content="Windows, Linux, MacOS; Cross-platform GUI and Python API. RFC 2544. VM Appliance. CML, GNS3, EVE-NG and Containerlab appliances. High speed line-rate add-on.">
+<meta name="twitter:site" content="@ostinato">
+<meta name="twitter:creator" content="@ostinato">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://ostinato.org/images/site-logo.png">
+
+<!-- Open Graph -->
+<meta property="og:locale" content="en_US">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Pricing">
+<meta property="og:description" content="Windows, Linux, MacOS; Cross-platform GUI and Python API. RFC 2544. VM Appliance. CML, GNS3, EVE-NG and Containerlab appliances. High speed line-rate add-on.">
+<meta property="og:url" content="https://ostinato.org/pricing/">
+<meta property="og:site_name" content="Ostinato Traffic Generator for Network Engineers">
+<meta property="og:image" content="https://ostinato.org/images/site-logo.png">
+
+
+<!-- Webmaster Tools verfication -->
+<meta name="google-site-verification" content="UdTZtGW8VteyiZPrF3J6dYXTzOdZbERIjB_RVpT153I">
+<meta name="msvalidate.01" content="07B2E5E88DD53A176E4B85F5F4A6F6BF">
+
+
+<link rel="canonical" href="https://ostinato.org/pricing/">
+<link href="https://ostinato.org/feed.xml" type="application/atom+xml" rel="alternate" title="Ostinato Traffic Generator for Network Engineers Feed">
+
+<!-- http://t.co/dKP3o1e -->
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- For all browsers -->
+<link rel="stylesheet" href="https://ostinato.org/assets/css/main.css">
+<!-- Webfonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Volkhov:ital@1&display=swap" rel="stylesheet">
+
+
+<meta http-equiv="cleartype" content="on">
+
+<!-- HTML5 Shiv and Media Query Support -->
+<!--[if lt IE 9]>
+  <script src="https://ostinato.org/assets/js/vendor/html5shiv.min.js"></script>
+  <script src="https://ostinato.org/assets/js/vendor/respond.min.js"></script>
+<![endif]-->
+
+<!-- Modernizr -->
+<script src="https://ostinato.org/assets/js/vendor/modernizr-2.7.1.custom.min.js"></script>
+
+<!-- Icons -->
+<!-- 16x16 -->
+<link rel="shortcut icon" href="https://ostinato.org/favicon.ico">
+<!-- 32x32 -->
+<link rel="shortcut icon" href="https://ostinato.org/favicon.png">
+<!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+<link rel="apple-touch-icon-precomposed" href="https://ostinato.org/images/apple-touch-icon-precomposed.png">
+<!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+<link rel="apple-touch-icon-precomposed" sizes="72x72" href="https://ostinato.org/images/apple-touch-icon-72x72-precomposed.png">
+<!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+<link rel="apple-touch-icon-precomposed" sizes="114x114" href="https://ostinato.org/images/apple-touch-icon-114x114-precomposed.png">
+<!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://ostinato.org/images/apple-touch-icon-144x144-precomposed.png">
+
+
+
+
+<!-- Asynchronous Google Analytics snippet -->
+<script>
+(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+ga('create', 'UA-10207003-4', 'auto', {'allowLinker': true});
+ga('require', 'GTM-PRCPNQM');
+ga('require', 'outboundLinkTracker');
+ga('require', 'linker');
+ga('linker:autoLink', ['gumroad.com'] );
+</script>
+<script async type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/autotrack/0.6.5/autotrack.js"></script>
+
+
+
+
+<!-- Cookie Consent plugin by Silktide - https://silktide.com/cookieconsent -->
+<script type="text/javascript">
+    window.cookieconsent_options = {"message":"This website uses cookies to ensure you get the best experience on our website","dismiss":"Got it!","learnMore":"More info","link":"https://ostinato.org/privacy","theme":"dark-bottom"};
+</script>
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/cookieconsent2/1.0.9/cookieconsent.min.js"></script>
+
+
+</head>
+
+<body id="page">
+
+<div class="navigation-wrapper">
+	<nav role="navigation" id="site-nav" class="animated drop">
+	    <ul>
+      
+		    
+		    <li><a href="https://ostinato.org/" >Home</a></li>
+		  
+		    
+		    <li><a href="https://ostinato.org/features" >Features</a></li>
+		  
+		    
+		    <li><a href="https://ostinato.org/pricing/#tiers" >Pricing</a></li>
+		  
+		    
+		    <li><a href="https://ostinato.org/docs/" >Docs</a></li>
+		  
+		    
+		    <li><a href="https://ostinato.org/guides/tags" >Guides</a></li>
+		  
+		    
+		    <li><a href="https://ostinato.org/about" >About</a></li>
+		  
+	    </ul>
+	</nav>
+</div><!-- /.navigation-wrapper -->
+
+<!--[if lt IE 9]><div class="upgrade"><strong><a href="https://whatbrowser.org/">Your browser is quite old!</strong> Why not upgrade to a different browser to better enjoy this site?</a></div><![endif]-->
+
+
+<header class="masthead">
+	<div class="wrap">
+      
+      
+                <p><a href="https://ostinato.org/"><img class="site-title" src="https://ostinato.org/images/site-name.png" width="355" height="99" alt="Ostinato Traffic Generator for Network Engineers"></a></p>
+      
+		<h2 class="site-description" itemprop="description"></h2>
+                
+	</div>
+</header><!-- /.masthead -->
+
+<div class="js-menu-screen menu-screen"></div>
+
+
+<div id="main" role="main">
+  <article class="entry">
+    
+    <div class="entry-wrapper">
+      <header class="entry-header">
+        <h1 class="entry-title">Pricing</h1>
+        
+      </header>
+      <div class="entry-content">
+        <link rel="stylesheet" href="/assets/css/pricing-new.css" />
+
+<p><a name="tiers"></a></p>
+<div class="pricing-table-container">
+  <div class="pricing-tables attached" data-list-id="pricing_plans" data-list-name="Pricing Plans">
+    <div class="row">
+      <div class="col-sm-4 col-md-4">
+        <div class="plan first">
+          <div class="head">
+            <h2>Solo</h2>
+          </div>
+          <h4>Individuals and<br />students</h4>
+          <ul class="item-list">
+            <li>Personal use only</li>
+          </ul>
+          <ul class="item-list">
+            <li>1 device, 4 ports</li>
+            <li>1,000 flows per port</li>
+            <li>1 Gbps per port</li>
+          </ul>
+          <ul class="item-list">
+            <li><strong>Includes:</strong></li>
+            <li>Standard protocols</li>
+            <li>Port statistics</li>
+            <li>Device emulation</li>
+          </ul>
+          <div class="price">
+            <h3><span class="symbol">$</span>12<span class="period">/mo</span></h3>
+            <h4>Billed Annually</h4>
+          </div>
+          <button type="button" class="buy-btn pdl" data-personal-use-only="" data-price-id="pri_01k4vymc5dd6vyhm1wajdd3zrh">
+                  Buy
+          </button>
+        </div>
+      </div>
+      <div class="col-sm-4 col-md-4 ">
+        <div class="plan recommended">
+          <div class="head">
+            <h2>Pro</h2>
+          </div>
+          <h4>Consultants and<br />small businesses</h4>
+          <ul class="item-list">
+            <li>Commercial use</li>
+          </ul>
+          <ul class="item-list">
+            <li>2 devices, 8 ports</li>
+            <li>10,000 flows per port</li>
+            <li>10 Gbps per port</li>
+          </ul>
+          <ul class="item-list">
+            <li><strong>Everything in Solo, plus:</strong></li>
+            <li>User-defined protocols</li>
+            <li>Stream statistics</li>
+            <li>Turbo 10G add-on ready</li>
+          </ul>
+          <div class="price">
+            <h3><span class="symbol">$</span>49<span class="period">/mo</span></h3>
+            <h4>Billed Annually</h4>
+          </div>
+          <button type="button" class="buy-btn pdl" data-price-id="pri_01k4wwmpm1v9chr4bw7vp14hf0">
+                  Buy
+          </button>
+        </div>
+      </div>
+      <div class="col-sm-4 col-md-4  ">
+        <div class="plan last">
+          <div class="head">
+            <h2>Business</h2>
+          </div>
+          <h4>Organizations with<br />advanced needs</h4>
+          <ul class="item-list">
+            <li>Commercial use</li>
+          </ul>
+          <ul class="item-list">
+            <li>4 devices, 16 ports</li>
+            <li>1 million flows per port</li>
+            <li>No bandwidth limit</li>
+          </ul>
+          <ul class="item-list">
+            <li><strong>Everything in Pro, plus:</strong></li>
+            <li>Protocol emulation</li>
+            <li>Automation API</li>
+            <li>RFC 2544 Perf-Bench</li>
+          </ul>
+          <div class="price">
+            <h3><span class="symbol">$</span>208<span class="period">/mo</span></h3>
+            <h4>Billed Annually</h4>
+          </div>
+          <button type="button" class="buy-btn pdl" data-price-id="pri_01k4wwpa2pjpqxapsmth4m9etv">
+                  Buy
+          </button>
+        </div>
+      </div>
+    </div> <!-- row-->
+    <div class="footnote">See <a href="#compare">detailed feature comparison</a></div>
+  </div> <!-- pricing-tables -->
+</div>
+
+<p class="center"><a name="labbing"></a>
+<a href="https://www.capterra.com/p/231149/Ostinato/reviews/"><img src="https://brand-assets.capterra.com/badge/e7048719-2ccb-4e5a-9fac-d84ba9c16682.png" alt="Ostinato is TOP rated on Capterra" /></a></p>
+
+<h1 class="center" id="labbing-platforms">Labbing platforms</h1>
+
+<p class="center">All the power of <a href="#tiers">Solo</a>, drop-in ready for your favorite labbing platform.<br />
+Stop pinging, start traffic-testing!</p>
+
+<div data-list-id="labbing_platforms" data-list-name="Labbing Platforms" style="text-align:center;">
+  <a href="/pricing/gns3" class="btn" data-price-id="pri_01k4wwra3fhkt30p41w4wknn3z">Ostinato for GNS3</a> &nbsp;
+  <a href="/eveng" class="btn" data-price-id="pri_01k4wwt9tce6q2zxr4zdzz8qg8">Ostinato for EVE-NG</a> &nbsp;
+  <a href="/pricing/cml" class="btn" data-price-id="pri_01k4wwvkbd2svv5p96dvp1acca">Ostinato for CML</a> &nbsp;
+  <a href="/pricing/clab" class="btn" data-price-id="pri_01k4wwxnpjpqxbd6df46e421ap">Ostinato for CLAB</a> &nbsp;
+</div>
+
+<div style="display: flex; gap: 20px; margin: 20px 0; text-align: center;">
+  <div style="flex: 1;">
+    <h1>Add-ons and Services</h1>
+    <p>
+      <a href="/pricing/turbo" class="btn">Turbo 10/100/400G</a> &nbsp;
+      <a href="/pricing/services" class="btn">Professional Services</a>
+    </p>
+  </div>
+  <div style="flex: 1;">
+    <h1>Free tools</h1>
+    <p>
+      <a href="https://gum.co/send-igmp/free?price=0&amp;wanted=true&amp;referrer=https://ostinato.org" class="btn">Send IGMP</a>
+    </p>
+  </div>
+</div>
+
+<p><a name="compare"></a></p>
+<h1 id="compare-licenses-and-features">Compare Licenses and Features</h1>
+
+<style>
+.table-comparison {
+  table-layout: fixed;
+  width: 100%;
+}
+.table-comparison th:first-child,
+.table-comparison td:first-child {
+  width: 32%; /* First column gets more space */
+}
+.table-comparison th:not(:first-child),
+.table-comparison td:not(:first-child) {
+  width: 23%; /* Remaining 3 columns share 69% equally */
+}
+.table-comparison th:first-child,
+.table-comparison td:first-child {
+  text-align: left;
+}
+.table-comparison th:not(:first-child),
+.table-comparison td:not(:first-child) {
+  text-align: center;
+}
+.table-comparison thead th {
+  background-color: #343a40;
+  color: #ffffff;
+  font-family: inherit;
+  font-weight: 600;
+  font-style: normal;
+  padding: 12px 8px;
+  text-transform: uppercase;
+}
+</style>
+
+<table class="table table-comparison">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>Solo</th>
+      <th>Pro</th>
+      <th>Business</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="section-header">
+      <td colspan="4">🔍 Overview</td>
+    </tr>
+    <tr>
+      <td>Best For</td>
+      <td>Individuals and students</td>
+      <td>Consultants and small businesses</td>
+      <td>Organizations with advanced needs</td>
+    </tr>
+    <tr>
+      <td>Permitted Use
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Use for work, teaching, training, consulting, or any business purpose requires a commercial license;<br />Personal learning and non-work use is permitted with Solo license.</span>
+        </div>
+      </td>
+      <td>Personal use<br />only</td>
+      <td>Commercial use allowed</td>
+      <td>Commercial use allowed</td>
+    </tr>
+    <tr>
+      <td>Software Use
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">An active subscription is required<br />to use the software</span>
+        </div>
+      </td>
+      <td>Subscription</td>
+      <td>Subscription</td>
+      <td>Subscription</td>
+    </tr>
+    <tr>
+      <td>Software Updates</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr class="section-header">
+      <td colspan="4">💻 Platforms &amp; Deployment</td>
+    </tr>
+    <tr>
+      <td>Windows</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>MacOS</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Linux
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">
+            RHEL 9, RHEL 10<br />
+            Ubuntu 22.04 LTS, 24.04 LTS<br />
+            <br />
+            Other distros on request (<i>Business plan only</i>)
+          </span>
+        </div>
+      </td>
+      <td>—</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Virtual Appliance</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Docker Container</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr class="section-header">
+      <td colspan="4">⚙️ Features &amp; Functionality</td>
+    </tr>
+    <tr>
+      <td> Standard Protocols
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">All built-in protocols:<br />Ethernet, VLAN (QinQ), ARP, IPv4/6, ICMP, UDP, TCP (stateless), GRE, IP-in-IP etc.</span>
+        </div>
+      </td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>User-defined Protocols
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Add support for unsupported protocols via scripting</span>
+        </div>
+      </td>
+      <td>—</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Port Statistics</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Stream Statistics</td>
+      <td>—</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Device Emulation</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Protocol Emulation</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Max Flows Per Port</td>
+      <td>1,000</td>
+      <td>10,000</td>
+      <td>1 million
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Business users can upgrade to higher or unlimited flows</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>PCAP Import Max Packets</td>
+      <td>5,000</td>
+      <td>250,000</td>
+      <td>Unlimited</td>
+    </tr>
+    <tr>
+      <td>Port Reservation</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Max sessions per device
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Each GUI or API connection to a device counts as a session</span>
+        </div>
+      </td>
+      <td>1</td>
+      <td>1</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>Automation API</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>RFC 2544 PerfBench</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr class="section-header">
+      <td colspan="4">📊 Limits &amp; Scalability</td>
+    </tr>
+    <tr>
+      <td>Included devices
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Applies to Drone agents only;<br />GUI/API installs not counted</span>
+        </div>
+      </td>
+      <td>1</td>
+      <td>2</td>
+      <td>4</td>
+    </tr>
+    <tr>
+      <td>Additional Devices</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Available on request</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>Max ports across all devices</td>
+      <td>4 ports</td>
+      <td>8 ports</td>
+      <td>16 ports</td>
+    </tr>
+    <tr>
+      <td>Max Bandwidth per Port
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Achieved bandwidth may be less than maximum depending on packet size and hardware specs</span>
+        </div>
+      </td>
+      <td>1 Gbps</td>
+      <td>10 Gbps</td>
+      <td>Unrestricted</td>
+    </tr>
+    <tr>
+      <td>Turbo Add-On Ready
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">Turbo licenses sold separately</span>
+        </div>
+      </td>
+      <td>—</td>
+      <td>Turbo 10G</td>
+      <td>Turbo&nbsp;10/100/400G</td>
+    </tr>
+    <tr class="section-header">
+      <td colspan="4">🔐 Licensing &amp; Support</td>
+    </tr>
+    <tr>
+      <td>License Check</td>
+      <td>Internet</td>
+      <td>Internet</td>
+      <td>Internet</td>
+    </tr>
+    <tr>
+      <td>Offline License Check
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">For Linux Drone agents only;<br />Supports air-gapped environments</span>
+        </div>
+      </td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Community Forums</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>Email Support</td>
+      <td>—</td>
+      <td>30 days
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">30 days from initial purchase</span>
+        </div>
+      </td>
+      <td>✅</td>
+    </tr>
+    <tr class="section-header">
+      <td colspan="4">🧾 Procurement &amp; Purchasing</td>
+    </tr>
+    <tr>
+      <td>PO and Invoice payment</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">An additional $150 admin and handling fee applies to PO and invoice payments</span>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>Reseller Purchasing Support</td>
+      <td>—</td>
+      <td>—</td>
+      <td>✅
+        <div class="tooltip">
+          <i class="fa fa-info-circle" aria-hidden="true"></i>
+          <span class="tooltiptext">An additional $150 admin and handling fee applies to reseller transactions</span>
+        </div>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="center"><a href="#tiers" class="cta-btn">Choose a License</a></p>
+
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+
+<script type="text/javascript">
+window.gaViewItem = false;
+let products = {
+    // Sandbox Products (for testing)
+    'pri_01k4w5h1bxhg3n90afg787qgr6': '[SANDBOX] Ostinato Solo',
+
+    // Main Products
+    'pri_01k4vymc5dd6vyhm1wajdd3zrh': 'Ostinato Solo',
+    'pri_01k4wwmpm1v9chr4bw7vp14hf0': 'Ostinato Pro',
+    'pri_01k4wwpa2pjpqxapsmth4m9etv': 'Ostinato Business',
+
+    // Labbing SKUs
+    'pri_01k4wwra3fhkt30p41w4wknn3z': 'Ostinato for GNS3',
+    'pri_01k4wwt9tce6q2zxr4zdzz8qg8': 'Ostinato for EVE-NG',
+    'pri_01k4wwvkbd2svv5p96dvp1acca': 'Ostinato for CML',
+    'pri_01k4wwxnpjpqxbd6df46e421ap': 'Ostinato for Containerlab',
+
+    // Turbo Add-ons
+    'pri_01k4wwz9jp0c0trykghw07sc6x': 'Turbo 10G (add-on)',
+    'pri_01k4wx4td44jepqebwfdwfwf3w': 'Turbo 100G (add-on)',
+    'pri_01k773zf5skqx44geevpm2svad': 'Turbo 400G (add-on)'
+};
+
+function paddleEvents(event) {
+    // Paddle Billing event structure
+    let checkoutData = {
+        currency: event.data?.currency_code || "USD",
+        value: (event.data?.totals?.subtotal || 0) - (event.data?.totals?.discount || 0),
+        coupon: event.data?.discount?.code || event.data?.discount?.id || null,
+        items: (event.data?.items || []).map(item => ({
+            item_id: item.price_id,
+            item_name: item.product?.name || "Unknown",
+            price: (item.totals?.subtotal - item.totals?.discount)/item.quantity || 0,
+            quantity: item.quantity || 1
+        })),
+    };
+
+    if (event.name === "checkout.loaded") {
+        let dataLayerInfo = {
+            event: "begin_checkout",
+            ecommerce: checkoutData,
+        };
+        dataLayer.push(dataLayerInfo);
+    } else if (event.name === "checkout.payment.selected") {
+        let dataLayerInfo = {
+            event: "add_payment_info",
+            ecommerce: checkoutData,
+        };
+        dataLayer.push(dataLayerInfo);
+    } else if (event.name === "checkout.completed") {
+        // Store customer email for thank you page survey
+        const customerEmail = event.data?.customer?.email;
+        if (customerEmail) {
+            sessionStorage.setItem('purchase_email', customerEmail);
+        } else {
+            sessionStorage.removeItem('purchase_email');
+        }
+
+        // Store personalUseOnly for thank you page
+        const personalUse = event.data?.custom_data?.personal_use_only;
+        if (personalUse) {
+            sessionStorage.setItem('personal_use_only', '1');
+        } else {
+            sessionStorage.removeItem('personal_use_only');
+        }
+
+        // Track purchase event
+        checkoutData.transaction_id = event.data?.transaction_id;
+        checkoutData.tax = event.data?.totals?.tax || 0;
+        let dataLayerInfo = {
+            event: "purchase",
+            ecommerce: checkoutData,
+        };
+        dataLayer.push(dataLayerInfo);
+    }
+}
+
+
+Paddle.Initialize({
+    token: "live_50828ea746fde904a1fe1e34c95",
+    eventCallback: paddleEvents,
+    checkout: {
+        settings: {
+            successUrl: "https://ostinato.org/pricing/thanks"
+        }
+    }
+});
+
+// Emit view_item_list using data attributes on buttons/sections
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        // Elements that represent purchasable items:
+        // - Primary buy buttons (have data-price-id)
+        // - Any teaser/list elements tagged with data-item-id
+        let elements = Array.from(document.querySelectorAll('[data-price-id]'));
+        if (!elements.length) return;
+
+        // Group by list id
+        const groups = new Map(); // listId -> { name, ids:Set }
+
+        for (const el of elements) {
+            const itemId = el?.dataset?.priceId;
+            if (!itemId) continue;
+
+            // Prefer button-level attributes; fallback to nearest ancestor
+            const parentWithList = el.closest('[data-list-id],[data-list-name]');
+            const listId = el.dataset.listId || parentWithList?.dataset?.listId;
+            const listName = el.dataset.listName || parentWithList?.dataset?.listName || listId || 'Unknown List';
+            if (!listId) continue; // require a list id to emit
+
+            if (!groups.has(listId)) groups.set(listId, { name: listName, ids: new Set() });
+            groups.get(listId).ids.add(itemId);
+        }
+
+        for (const [listId, { name, ids }] of groups) {
+            const items = Array.from(ids).map(id => ({
+                item_id: id,
+                item_name: products[id] || 'Unknown'
+            }));
+            if (!items.length) continue;
+            dataLayer.push({
+                event: 'view_item_list',
+                ecommerce: {
+                    item_list_id: listId,
+                    item_list_name: name,
+                    items: items
+                }
+            });
+        }
+    } catch (e) {
+        // no-op
+    }
+});
+
+// Emit view_item on dedicated product detail pages when flagged in front matter
+document.addEventListener('DOMContentLoaded', function () {
+    try {
+        if (!window.gaViewItem) return;
+        const el = document.querySelector('[data-price-id]');
+        const id = el?.dataset?.priceId;
+        if (!id) return;
+        dataLayer.push({
+            event: 'view_item',
+            ecommerce: {
+                items: [{
+                    item_id: id,
+                    item_name: products[id] || 'Unknown'
+                }]
+            }
+        });
+    } catch (e) {
+        // no-op
+    }
+});
+
+function openCheckout(ev) {
+    const target = ev.currentTarget;
+    const itemId = target.dataset.priceId;
+    const parentWithList = target.closest('[data-list-id],[data-list-name]');
+    const listId = target.dataset.listId || parentWithList?.dataset?.listId || null;
+    const listName = target.dataset.listName || parentWithList?.dataset?.listName || null;
+
+    let selectItemEvent = {
+        event: "select_item",
+        ecommerce: {
+          ...(listId ? { item_list_id: listId } : {}),
+          ...(listName ? { item_list_name: listName } : {}),
+          items: [{
+              item_id: itemId,
+              item_name: products[itemId] || "Unknown",
+          }]
+        }
+    };
+    dataLayer.push(selectItemEvent);
+
+    const personalUseOnly = ev.currentTarget.hasAttribute("data-personal-use-only");
+    let itemList = [{
+        priceId: ev.currentTarget.dataset.priceId,
+        quantity: 1
+    }];
+    Paddle.Checkout.open({
+        items: itemList,
+        discountId: ev.currentTarget.dataset.discountId ?
+                ev.currentTarget.dataset.discountId : null,
+        settings: {
+            showAddTaxId: !personalUseOnly
+        },
+        ...(personalUseOnly && {
+            customData: {
+                personal_use_only: true
+            }
+        })
+    });
+}
+
+buyButtons = document.querySelectorAll('button.buy-btn.pdl')
+for (let s of buyButtons) {
+  s.addEventListener('click', openCheckout, false);
+}
+</script>
+
+
+      </div><!-- /.entry-content -->
+    </div><!-- /.entry-wrapper -->
+  </article>
+</div><!-- /#main -->
+
+<div class="footer-wrapper">
+  <footer role="contentinfo" class="entry-wrapper">
+    
+
+<div>
+  <a href="/about">About</a> | <a href="/news/">News</a> | <a href="/archives">Archives</a> | <a href="/contact">Contact</a> | <a href="/privacy">Privacy</a>
+</div>
+
+
+<span>&copy; 2026 Ostinato. Powered by <a href="https://jekyllrb.com" rel="nofollow">Jekyll</a> using the <a href="https://mademistakes.com/work/jekyll-themes/so-simple/" rel="nofollow">So Simple Theme</a></span>
+
+<div class="social-icons">
+	<a href="https://twitter.com/ostinato" title="Ostinato Traffic Generator for Network Engineers on Twitter" target="_blank"><i class="fa fa-twitter-square fa-2x"></i></a>
+	
+	
+	<a href="https://linkedin.com/company/ostinatotg" title="Ostinato on LinkedIn" target="_blank"><i class="fa fa-linkedin-square fa-2x"></i></a>
+	
+	
+	
+	
+	
+        
+        
+	<a href="https://groups.google.com/group/ostinato" title="Ostinato Traffic Generator for Network Engineers mailing list and forum" target="_blank"><i class="fa fa-envelope-square fa-2x"></i></a>
+        <a href="https://ostinato.org/feed.xml" title="Atom/RSS feed"><i class="fa fa-rss-square fa-2x"></i></a>
+</div><!-- /.social-icons -->
+
+  </footer>
+</div><!-- /.footer-wrapper -->
+
+<script type="text/javascript">
+  var BASE_URL = 'https://ostinato.org';
+</script>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="https://ostinato.org/assets/js/vendor/jquery-1.9.1.min.js"><\/script>')</script>
+<script src="https://ostinato.org/assets/js/scripts.min.js"></script>
+<!-- Srivats' added: Add magnific popup iframe support -->
+<script type="text/javascript">
+var showIframeLoading = function() {
+    var curLength = 0;
+    var interval = setInterval(function() {
+        if ($('iframe').length !== curLength) {
+            curLength = $('.column-header').length;
+            $('.mfp-content').hide();
+            $('.mfp-preloader').show();
+        }
+    }, 50);
+    this.content.find('iframe').on('load', function() {
+        clearInterval(interval);
+        $('.mfp-content').show();
+        $('.mfp-preloader').hide();
+    });
+};
+$(document).ready(function() {
+  $('.iframe-popup').magnificPopup({
+    type: 'iframe',
+    tLoading: 'Fetching ...',
+    callbacks: {
+      beforeAppend: showIframeLoading
+    },
+  });
+});
+</script>
+<!-- Srivats' added: Open external links in new tab  -->
+<script>
+(function() {
+  var links = document.links;
+  for (var i = 0, linksLength = links.length; i < linksLength; i++) {
+    if (links[i].hostname.includes('ostinato.org'))
+        continue
+    if (links[i].classList.contains('iframe-popup'))
+        continue
+    if (links[i].hostname.includes('gumroad.com'))
+        continue
+    if (links[i].hostname.includes('localhost'))
+        continue
+
+    links[i].target = '_blank';
+  }
+})();
+</script>
+
+
+
+
+
+</body>
+</html>
