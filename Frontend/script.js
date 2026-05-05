@@ -920,27 +920,6 @@ function renderDefenseSnapshot(status, analysis) {
     });
 }
 
-function renderDefenseDoctrine(status, analysis) {
-    const host = el("defenseDoctrine");
-    if (!host) return;
-    host.innerHTML = "";
-    const items = [
-        "Mission: reduce operator noise by combining layered anomaly detectors with verification models and explicit prevention policy.",
-        "Core product alignment: the anomaly stack is Autoencoder, Isolation Forest, and K-Means, matching the prototype review.",
-        "Production live alerts: RF and GBDT decide severity; heuristics raise explicit ICMP, TCP probe, SYN burst, and UDP flood events.",
-        `Prevention posture: ${status.prevention_enabled ? "automatic response is armed" : "response remains manual"} with threshold set to ${status.auto_block_threshold || "high"} and method ${responseModeLabel(status.response_mode)}.`,
-        `Healing posture: ${status.healing_enabled ? `automatic recovery is active after ${status.healing_window_seconds || 180} seconds` : "recovery remains manual until healing is re-enabled"}.`,
-        `Decoy posture: ${(analysis.active_decoy_count || 0)} decoy services online with ${(analysis.recent_decoy_event_count || 0)} recent trap hits.`,
-        `Research visibility: PPO and GNN remain in the console for deeper context, but they do not overrule live authority.`,
-    ];
-    items.forEach((text) => {
-        const card = document.createElement("div");
-        card.className = "event-card compact-card";
-        card.textContent = text;
-        host.appendChild(card);
-    });
-}
-
 function renderPreventionQueue(results, blockedItems = []) {
     const tbody = el("preventionQueueTable");
     if (!tbody) return;
@@ -1315,7 +1294,6 @@ async function refreshDashboard() {
     renderComparison(analysis.model_comparison || {});
     renderModelMatrix(analysis.model_matrix || {});
     renderModelNarrative(analysis);
-    renderDefenseDoctrine(status, analysis);
     renderPreventionQueue(results.results || [], blocked.blocked_ips || []);
     renderHealingQueue(analysis.healing_queue || []);
     renderHealingHistory(analysis.healing_history || []);
