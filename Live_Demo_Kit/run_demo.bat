@@ -42,8 +42,8 @@ echo ============================================================
 echo.
 echo DEMO TOOLS READY:
 echo - IDS/IPS Dashboard: http://127.0.0.1:5000
-if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\pktbuilder.exe" (
-    echo - Capsa: Packet Builder ready
+if exist "C:\Program Files\Colasoft Capsa 11 Free Edition\Capsa.exe" (
+    echo - Capsa: Open for manual packet generation
 )
 echo - Nmap shortcut: Double-click to run scan when needed
 echo.
@@ -54,7 +54,8 @@ echo 3. Show Defense & Prevention - decoys and firewall
 echo 4. Deploy a decoy (fake_ssh)
 echo 5. Double-click Nmap shortcut to run port scan
 echo 6. Watch dashboard detect the scan
-echo 7. Stop capture
+echo 7. Use Capsa manually to generate custom traffic if needed
+echo 8. Stop capture
 echo.
 echo Press any key to close this window (tools remain open)...
 pause >nul
