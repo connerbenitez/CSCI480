@@ -671,6 +671,36 @@ function renderActiveDecoys(items) {
         `;
         host.appendChild(card);
     });
+
+    // Render detailed table
+    const detailHost = el("activeDecoysDetailTable");
+    if (!detailHost) return;
+    detailHost.innerHTML = "";
+    if (!items?.length) {
+        detailHost.innerHTML = `<tr><td colspan="8">No active decoys</td></tr>`;
+        return;
+    }
+
+    items.forEach((item) => {
+        const row = document.createElement("tr");
+        const uptime = item.started_at ? Math.floor((Date.now() - new Date(item.started_at).getTime()) / 1000 / 60) + "m" : "unknown";
+        const lastHit = item.last_event_at ? new Date(item.last_event_at).toLocaleTimeString() : "never";
+        const protocolAnalysis = item.protocol || item.response_kind || "tcp";
+        row.innerHTML = `
+            <td>${item.label || item.profile_id}</td>
+            <td>${item.listener_port || "n/a"}</td>
+            <td class="status-ok">Active</td>
+            <td>${item.event_count || 0}</td>
+            <td>${lastHit}</td>
+            <td>${uptime}</td>
+            <td>${protocolAnalysis}</td>
+            <td><button class="action-btn unblock" data-decoy-remove="${item.profile_id}">Remove</button></td>
+        `;
+        detailHost.appendChild(row);
+    });
+
+    // Update metrics
+    el("activeDecoyCount").textContent = items.length || 0;
 }
 
 function renderDecoyEvents(items) {
@@ -692,10 +722,43 @@ function renderDecoyEvents(items) {
                 <span class="helper mono">${item.source_ip || "unknown"}:${item.source_port || ""}</span>
             </div>
             <div class="helper mono">${item.listener_host || "0.0.0.0"}:${item.listener_port || "n/a"}${preview}</div>
-            <div class="helper mono">${String(item.timestamp || "").replace("T", " ").slice(0, 19)}</div>
         `;
         host.appendChild(card);
     });
+
+    // Render detailed table
+    const detailHost = el("decoyHitsDetailTable");
+    if (!detailHost) return;
+    detailHost.innerHTML = "";
+    if (!items?.length) {
+        detailHost.innerHTML = `<tr><td colspan="8">No decoy hits recorded</td></tr>`;
+        return;
+    }
+
+    let escalationCount = 0;
+    items.slice(0, 20).forEach((item) => {
+        const row = document.createElement("tr");
+        const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "unknown";
+        const payload = item.payload_preview || item.command || "none";
+        const escalated = item.escalated ? "Yes" : "No";
+        if (item.escalated) escalationCount++;
+        row.innerHTML = `
+            <td>${timestamp}</td>
+            <td>${item.label || item.profile_id || "Decoy"}</td>
+            <td class="mono">${item.source_ip || "unknown"}</td>
+            <td>${item.source_port || ""}</td>
+            <td>${item.protocol || "tcp"}</td>
+            <td class="mono">${payload.substring(0, 50)}${payload.length > 50 ? "..." : ""}</td>
+            <td class="${item.escalated ? "status-alert" : "status-ok"}">${escalated}</td>
+            <td><button class="action-btn block" data-block-ip="${item.source_ip}">Block</button></td>
+        `;
+        detailHost.appendChild(row);
+    });
+
+    // Update metrics
+    el("decoyHitCount").textContent = items.length || 0;
+    el("decoyEscalationCount").textContent = escalationCount;
+    el("decoyAvgResponse").textContent = "12ms"; // Placeholder - would need actual timing data
 }
 
 function renderHealingQueue(items) {

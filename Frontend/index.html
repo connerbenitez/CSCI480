@@ -60,34 +60,6 @@
                         <p class="helper">Use an elevated shell for raw capture and firewall-backed prevention.</p>
                     </article>
 
-                    <article class="card">
-                        <h2>Prevention Controls</h2>
-                        <div class="field-row inline">
-                            <label class="toggle">
-                                <input type="checkbox" id="preventionToggle">
-                                <span>Enable automatic blocking</span>
-                            </label>
-                        </div>
-                        <div class="field-row">
-                            <label for="threshold">Auto-block threshold</label>
-                            <select id="threshold">
-                                <option value="high">High only</option>
-                                <option value="medium">Medium and High</option>
-                                <option value="low">Low and above</option>
-                            </select>
-                        </div>
-                        <div class="field-row">
-                            <label for="responseMode">Automatic response method</label>
-                            <select id="responseMode">
-                                <option value="watch_only">Watchlist Only</option>
-                                <option value="block_inbound">Inbound Containment</option>
-                                <option value="block_bidirectional">Full Containment</option>
-                                <option value="shield_service_port">Shield Local Service Port</option>
-                                <option value="deploy_decoy">Adaptive Decoy</option>
-                            </select>
-                        </div>
-                        <button id="savePreventionBtn" class="secondary" type="button">Save Prevention Settings</button>
-                    </article>
 
                     <article class="card">
                         <h2>Rapid Attack Exercise</h2>
@@ -457,6 +429,37 @@
                 <section class="dashboard-grid response-grid">
                     <article class="card">
                         <div class="card-head">
+                            <h2>Prevention Controls</h2>
+                            <span>Configure automatic blocking and response behavior</span>
+                        </div>
+                        <div class="field-row inline">
+                            <label class="toggle">
+                                <input type="checkbox" id="preventionToggle">
+                                <span>Enable automatic blocking</span>
+                            </label>
+                        </div>
+                        <div class="field-row">
+                            <label for="threshold">Auto-block threshold</label>
+                            <select id="threshold">
+                                <option value="high">High only</option>
+                                <option value="medium">Medium and High</option>
+                                <option value="low">Low and above</option>
+                            </select>
+                        </div>
+                        <div class="field-row">
+                            <label for="responseMode">Automatic response method</label>
+                            <select id="responseMode">
+                                <option value="watch_only">Watchlist Only</option>
+                                <option value="block_inbound">Inbound Containment</option>
+                                <option value="block_bidirectional">Full Containment</option>
+                                <option value="shield_service_port">Shield Local Service Port</option>
+                                <option value="deploy_decoy">Adaptive Decoy</option>
+                            </select>
+                        </div>
+                        <button id="savePreventionBtn" class="secondary" type="button">Save Prevention Settings</button>
+                    </article>
+                    <article class="card">
+                        <div class="card-head">
                             <h2>Healing Controls</h2>
                             <span>Timed recovery for auto-blocked hosts</span>
                         </div>
@@ -472,23 +475,6 @@
                         </div>
                         <button id="saveHealingBtn" class="secondary" type="button">Save Healing Settings</button>
                         <p class="helper">Auto-blocked IPs can be restored after the configured cooldown if healing stays enabled.</p>
-                    </article>
-                    <article class="card">
-                        <div class="card-head">
-                            <h2>Response Methods</h2>
-                            <span>Choose what automatic prevention actually does</span>
-                        </div>
-                        <div class="field-row">
-                            <label for="responseModeResponse">Automatic response method</label>
-                            <select id="responseModeResponse">
-                                <option value="watch_only">Watchlist Only</option>
-                                <option value="block_inbound">Inbound Containment</option>
-                                <option value="block_bidirectional">Full Containment</option>
-                                <option value="shield_service_port">Shield Local Service Port</option>
-                                <option value="deploy_decoy">Adaptive Decoy</option>
-                            </select>
-                        </div>
-                        <p class="helper">Watchlist keeps tracking the host, inbound containment drops incoming traffic only, full containment blocks both directions, service-port shielding closes the local destination port, and adaptive decoy deploys a trap service to capture follow-on activity.</p>
                     </article>
                     <article class="card">
                         <div class="card-head">
@@ -551,16 +537,90 @@
                         </div>
                         <p class="helper" id="decoyHint">Deploy a low-interaction trap service to capture follow-on traffic from suspicious sources.</p>
                     </article>
+                    <article class="card wide-card">
+                        <div class="card-head">
+                            <h2>Adaptive Decoy Live Monitor</h2>
+                            <span>Real-time decoy activity and performance metrics</span>
+                        </div>
+                        <div class="decoy-metrics-grid" id="decoyMetricsGrid">
+                            <div class="mini-metric">
+                                <span>ACTIVE DECOYS</span>
+                                <strong id="activeDecoyCount">0</strong>
+                                <small>deployed services</small>
+                            </div>
+                            <div class="mini-metric">
+                                <span>TOTAL HITS</span>
+                                <strong id="decoyHitCount">0</strong>
+                                <small>connections captured</small>
+                            </div>
+                            <div class="mini-metric">
+                                <span>ESCALATIONS</span>
+                                <strong id="decoyEscalationCount">0</strong>
+                                <small>repeat offenders blocked</small>
+                            </div>
+                            <div class="mini-metric">
+                                <span>AVG RESPONSE</span>
+                                <strong id="decoyAvgResponse">0ms</strong>
+                                <small>decoy response time</small>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="card wide-card">
+                        <div class="card-head">
+                            <h2>Active Decoys Detail</h2>
+                            <span>What each decoy is doing and how it's working</span>
+                        </div>
+                        <div class="table-wrap compact">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Profile</th>
+                                        <th>Port</th>
+                                        <th>Status</th>
+                                        <th>Connections</th>
+                                        <th>Last Hit</th>
+                                        <th>Uptime</th>
+                                        <th>Protocol Analysis</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="activeDecoysDetailTable"></tbody>
+                            </table>
+                        </div>
+                    </article>
+                    <article class="card wide-card">
+                        <div class="card-head">
+                            <h2>Recent Decoy Hits Detail</h2>
+                            <span>Real connections captured by deployed decoys with full analysis</span>
+                        </div>
+                        <div class="table-wrap compact">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Decoy</th>
+                                        <th>Source IP</th>
+                                        <th>Source Port</th>
+                                        <th>Protocol</th>
+                                        <th>Command/Payload</th>
+                                        <th>Escalated</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="decoyHitsDetailTable"></tbody>
+                            </table>
+                        </div>
+                    </article>
                     <article class="card">
                         <div class="card-head">
-                            <h2>Active Decoys</h2>
+                            <h2>Active Decoys (Quick View)</h2>
                             <span>Trap listeners currently online</span>
                         </div>
                         <div class="event-list" id="activeDecoysList"></div>
                     </article>
                     <article class="card">
                         <div class="card-head">
-                            <h2>Recent Decoy Hits</h2>
+                            <h2>Recent Decoy Hits (Quick View)</h2>
                             <span>Real connections captured by deployed decoys</span>
                         </div>
                         <div class="event-list" id="decoyEventsList"></div>
